@@ -1,3 +1,17 @@
+ 
+
+# print out root and children as a tree showing attributes and values, recursively
+def print_tree(node, level=0, print_attributes=False):
+    # print('-'*20)
+    print('  '*level + node.tag)
+    # print the attributes
+    if print_attributes:
+        for key, value in node.attrib.items():
+            print('  '*(level+1) + key,':', value)
+    for child in node:
+        print_tree(child, level+1, print_attributes=print_attributes)
+        
+
 
 def smart_indent_xml(elem, level=0):
     i = "\n" + level*"  "

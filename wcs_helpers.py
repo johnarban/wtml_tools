@@ -197,6 +197,10 @@ def header_cd_to_cdelt_crota(header):
     
     cdelt = get_scale(cd)
     crota = get_rot(cd)
+    if parity > 0:
+        # just need parity inversion
+        cdelt[1] *= -1
+        crota = crota
     header['CDELT1'] = cdelt[0]
     header['CDELT2'] = cdelt[1]
     header['CROTA2'] = crota 

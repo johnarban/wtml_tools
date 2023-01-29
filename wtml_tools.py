@@ -25,6 +25,24 @@ from xml_indenter import smart_indent_xml, split_xml_attributes
 
  
 
+def clean_image(filename):
+    im = Image.open(filename)
+    im.save(filename)
+    # # remove first line of a file
+    # with open(filename, 'r') as fin:
+    #     data = fin.read().splitlines(True)
+    # with open(filename, 'w') as fout:
+    #     fout.writelines(data[1:])
+
+def get_header(wcsfile, clean = False, clean_sip = False, clean_all = False):
+    header = Header.fromfile(wcsfile)
+    if clean or clean_all:
+        header = wh.clean_header(header)
+    if clean_sip or clean_all:
+        header = wh.remove_sip(header)
+    return header
+
+
 def get_scale_rot(header, force = False):
     # from astrometry.net/net/wcs.py
     wcs = wh.header_to_wcs(header)
@@ -57,11 +75,11 @@ def add_scale_rot(header, from_header = None):
     return header
  
 
-def do_parity_inversion(header, im):
+def do_parity_inversion(header, im, force = False):
     # flip image top to bottom 
     # from https://github.com/WorldWideTelescope/wwt-aligner/blob/master/backend/wwt_aligner/driver.py#L449
     parity = wh.get_parity(header = header)
-    if parity < 0:
+    if (parity < 0) and not force:
         print('parity inversion not needed')
         # WWT requires images with negative parity
         return header
@@ -79,30 +97,7 @@ def do_parity_inversion(header, im):
         hdwork['CD2_2'] *= -1
     hdwork = wh.add_NAXES(hdwork,im, add_naxisi = do_add_naxisi)
     return hdwork
-
-# reproject
-def get_rot_after_parity_inversion(header):
-    header = header.copy()
-    header['PC1_2'] *= -1
-    header['PC2_2'] *= -1
-    return 180 - wh.get_rot(wh.get_cd(header))
-    
-
-def rgb_reproject(image, header):
-    from_wcs = WCS(header)
-    r, g, b  = image.split()
-    r = np.array(r)[:,::-1]
-    g = np.array(g)[:,::-1]
-    b = np.array(b)[:,::-1]
-    to_wcs,shape_out = find_optimal_celestial_wcs([(r.shape,from_wcs)])
-    r, footprint = reproject_interp((r, from_wcs), to_wcs, shape_out = shape_out)
-    g, footprint = reproject_interp((g, from_wcs), to_wcs, shape_out = shape_out)
-    b, footprint = reproject_interp((b, from_wcs), to_wcs, shape_out = shape_out)
-    out = np.nan_to_num([r,g,b])
-    return out, to_wcs
-    
-    
-   
+       
    
 def output_avm(im, header, name='test', suffix = '', path_out='./', ext='jpg',  add_rot = False):
     
@@ -129,30 +124,13 @@ def output_avm(im, header, name='test', suffix = '', path_out='./', ext='jpg',  
     if isinstance(header, WCS):
         avm = AVM.from_wcs(header, shape = (im.height, im.width))
     else:
-        avm = AVM.from_header(header)
+        hd = wh.header_cd_to_cdelt_crota(header)
+        avm = AVM.from_header(hd)
     
     avm.embed(temp,out_tagged)
     
     return out_tagged, avm
     
-
-
-def clean_image(filename):
-    im = Image.open(filename)
-    im.save(filename)
-    # # remove first line of a file
-    # with open(filename, 'r') as fin:
-    #     data = fin.read().splitlines(True)
-    # with open(filename, 'w') as fout:
-    #     fout.writelines(data[1:])
-
-def get_header(wcsfile, clean = False, clean_sip = False, clean_all = False):
-    header = Header.fromfile(wcsfile)
-    if clean or clean_all:
-        header = wh.clean_header(header)
-    if clean_sip or clean_all:
-        header = wh.remove_sip(header)
-    return header
 
 def add_avm_tags_simple(image, name = None, wcsfile = None, use_inversion = True, add_rot = False, suffix = '', path_out = '.'):
     im = Image.open(image)
@@ -175,13 +153,6 @@ def add_avm_tags_simple(image, name = None, wcsfile = None, use_inversion = True
     
     if use_inversion:
         new_header = do_parity_inversion(header,im) 
-        if add_rot:
-            rot = get_rot_after_parity_inversion(header)
-            parity = wh.get_parity(header)
-            new_header['CROTA2'] = parity * rot
-            scale = wh.get_scale(new_header)
-            new_header['CDELT1'] = scale[0]
-            new_header['CDELT2'] = scale[1]
         wcs_for_embed = WCS(new_header)
         print('New parity: ', wh.get_parity(header = header))
 
@@ -189,53 +160,15 @@ def add_avm_tags_simple(image, name = None, wcsfile = None, use_inversion = True
         new_header = add_scale_rot(header)
         new_header = wh.remove_cd(new_header)
         wcs_for_embed = WCS(new_header)
-    out_tagged, avm = output_avm(im, wcs_for_embed, 
+    out_tagged, avm = output_avm(im, new_header, 
                             name=name,
                             suffix = suffix, 
                             path_out=path_out, 
                             add_rot = add_rot,
                             ext=ext)
     return header, wcs, new_header, wcs_for_embed, avm, out_tagged, im
-
-def add_avm_reproject(image, wcsfile = None, path_out = ''):
-    im = Image.open(image)
-    if wcsfile is None:
-        wcsfile = image.replace('jpg','wcs')
-
-    header = wh.clean_header(Header.fromfile(wcsfile))
-    header = wh.add_NAXES(header,im, add_naxisi = True)
     
-    # reproject
-    new_im, new_wcs = rgb_reproject(im, header)
-    new_image = Image.fromarray(new_im.astype('uint8').transpose(1,2,0))
-    out_tagged, avm = output_avm(new_image, new_wcs, 
-                            name=image.replace('.jpg','_reproj'), 
-                            ext='jpg', path_out=path_out)
-    return header, WCS(header), new_wcs, avm, out_tagged, im, new_image
-    
-    
-    
-    
-def embed_avm_from_wcs(image, name = None, wcsfile = None, path_out = '', use_inversion = True, suffix = '', add_rot = False):
-    im = Image.open(image)
-    if wcsfile is None:
-        wcsfile = image.replace('jpg','wcs')
-    if name is None:
-        name = image.replace('.jpg','')
-    
-    header = Header.fromfile(wcsfile)
-    header = wh.clean_header(header)
-    header = wh.remove_sip(header)
-    header = wh.add_NAXES(header,im, add_naxisi = True)
-    # header['CRPIX2'] = im.height + 1 - header['CRPIX2']
-    wcs = WCS(header)
-    
-    out_tagged, avm = output_avm(im, wcs, 
-                            name=name,
-                            suffix = suffix, 
-                            ext='jpg', path_out=path_out, add_rot = add_rot)
-    return header, wcs, avm, out_tagged, im
-
+ 
 
 def preview_image(image,coords=None):
     g =FITSFigure(image)
@@ -251,19 +184,82 @@ def preview_image(image,coords=None):
     return g
     
     
+def create_wtml(header,im,
+                name='test',
+                url = None,
+                credits = 'credits', 
+                credits_url = 'credits_url',
+                thumbnail_url = None,
+                out=None):
+    # print out header sayin "Creating WTML file"
+    print('\n ****** Creating WTML file ****** \n')
+    if out is None:
+        out = name + '.wtml'
+    print('writing to',out)
+    
+    parity = wh.get_parity(header = header)
+    if parity < 0:
+        header = do_parity_inversion(header,im, force=True)
+    
+    wcs = WCS(header)
+    # move reference to center of the image
+    # get the specs we need for the wtml file
+    # crpix = header['CRPIX1'],header['CRPIX2']
+    # crval = header['CRVAL1'],header['CRVAL2']
+    crpix = [(header['NAXIS1']+1)/2,(header['NAXIS2']+1)/2]
+    crval =  wcs.wcs_pix2world(*crpix,1)
+    offset = crpix
+    # crpix = [0,0]
+    # crval = wcs.wcs_pix2world([[crpix[0],crpix[1]]],1,)[0]
+    # offset =  0,(header['NAXIS2']+1)
+    
+    cd = wh.get_cd(wcs)
+    scales, rot, parity = get_scale_rot(header)
+    scale = np.sqrt(np.abs(scales[0]*scales[1]))
+    if url is None:
+        print('I need a url')
+        return 0
+    url = url
+    imageset = create_imageset_dict(name, rot, crval, offset, scale,
+                                        im.height, im.width, url, parity, cd)
+    folder = set_folder(name)
+    ra, dec = wcs.wcs_pix2world((header['NAXIS1']-1)/2,(header['NAXIS2']-1)/2,1)
+    place = set_place(name,ra/15, dec)
+    # add imageset to xml
+    # tree = parse_xml('blank.wtml')
+    # root = tree.getroot()
+    el_imageset = ET.Element('ImageSet', attrib = imageset)
+    el_credits = ET.Element('Credits')
+    el_credits.text = credits
+    el_credits_url = ET.Element('CreditsUrl')
+    el_credits_url.text = credits_url
+    el_description = ET.Element('Description')
+    el_description.text = 'description'
+    el_thumbnail_url = ET.Element('ThumbnailUrl')
+    el_thumbnail_url.text = thumbnail_url or 'https://nova.astrometry.net/image/16942765'
+    
+    
+    el_imageset.append(el_description)
+    el_imageset.append(el_credits)
+    el_imageset.append(el_credits_url)
+    el_imageset.append(el_thumbnail_url)
+    
+    el_forground = ET.Element('ForegroundImageSet')
+    el_forground.append(el_imageset)
+    
+    el_place = ET.Element('Place', attrib = place)
+    el_place.append(el_forground)
+    
+    el_folder = ET.Element('Folder', attrib = folder)
+    el_folder.append(el_place)
+    
+    smart_indent_xml(el_folder)
+    tree = ET.ElementTree(el_folder)
+    tree.write(out)
+    split_xml_attributes(out,field = 'ImageSet')
+    return tree, imageset
 
-# print out root and children as a tree showing attributes and values, recursively
-def print_tree(node, level=0, print_attributes=False):
-    # print('-'*20)
-    print('  '*level + node.tag)
-    # print the attributes
-    if print_attributes:
-        for key, value in node.attrib.items():
-            print('  '*(level+1) + key,':', value)
-    for child in node:
-        print_tree(child, level+1, print_attributes=print_attributes)
-        
-
+   
 def create_imageset_dict(name, rot, crval, offset, scale, height, width, url, parity, cd):
     print('  create_imageset_dict')
     print('  name',name)
@@ -272,6 +268,7 @@ def create_imageset_dict(name, rot, crval, offset, scale, height, width, url, pa
     if bottoms_up:
         # in negative parity the rotation needs to be reverse 
         rot = -rot   
+    print('  bottoms_up',bottoms_up)
     print('  rot',rot)
     print('  crval',crval)
     print('  offset',offset)
@@ -377,80 +374,17 @@ def set_xml_element(el, attribute = None, text = None):
     if text is not None:
         el.text = text
     
-def create_wtml(header,im,
-                name='test',
-                url = None,
-                credits = 'credits', 
-                credits_url = 'credits_url',
-                thumbnail_url = None,
-                out=None):
-    # print out header sayin "Creating WTML file"
-    print('\n ****** Creating WTML file ****** \n')
-    if out is None:
-        out = name + '.wtml'
-    print('writing to',out)
-    wcs = WCS(header)
-    # move reference to center of the image
-    # get the specs we need for the wtml file
-    # crpix = header['CRPIX1'],header['CRPIX2']
-    # crval = header['CRVAL1'],header['CRVAL2']
-    crpix = [(header['NAXIS1']+1)/2,(header['NAXIS2']+1)/2]
-    crval =  wcs.wcs_pix2world(*crpix,1)
-    offset = crpix
-    # crpix = [0,0]
-    # crval = wcs.wcs_pix2world([[crpix[0],crpix[1]]],1,)[0]
-    # offset =  0,(header['NAXIS2']+1)
     
-    cd = wh.get_cd(wcs)
-    scales, rot, parity = get_scale_rot(header)
-    scale = np.sqrt(np.abs(scales[0]*scales[1]))
-    if url is None:
-        print('I need a url')
-        return 0
-    url = url
-    imageset = create_imageset_dict(name,
-                                        rot,
-                                        crval,
-                                        offset,
-                                        scale,
-                                        im.height,
-                                        im.width,
-                                        url,
-                                        parity,
-                                        cd)
-    folder = set_folder(name)
-    ra, dec = wcs.wcs_pix2world((header['NAXIS1']-1)/2,(header['NAXIS2']-1)/2,1)
-    place = set_place(name,ra/15, dec)
-    # add imageset to xml
-    # tree = parse_xml('blank.wtml')
-    # root = tree.getroot()
-    el_imageset = ET.Element('ImageSet', attrib = imageset)
-    el_credits = ET.Element('Credits')
-    el_credits.text = credits
-    el_credits_url = ET.Element('CreditsUrl')
-    el_credits_url.text = credits_url
-    el_description = ET.Element('Description')
-    el_description.text = 'description'
-    el_thumbnail_url = ET.Element('ThumbnailUrl')
-    el_thumbnail_url.text = thumbnail_url or 'https://nova.astrometry.net/image/16942765'
-    
-    
-    el_imageset.append(el_description)
-    el_imageset.append(el_credits)
-    el_imageset.append(el_credits_url)
-    el_imageset.append(el_thumbnail_url)
-    
-    el_forground = ET.Element('ForegroundImageSet')
-    el_forground.append(el_imageset)
-    
-    el_place = ET.Element('Place', attrib = place)
-    el_place.append(el_forground)
-    
-    el_folder = ET.Element('Folder', attrib = folder)
-    el_folder.append(el_place)
-    
-    smart_indent_xml(el_folder)
-    tree = ET.ElementTree(el_folder)
-    tree.write(out)
-    split_xml_attributes(out,field = 'ImageSet')
-    return tree, imageset
+
+def rgb_reproject(image, header):
+    from_wcs = WCS(header)
+    r, g, b  = image.split()
+    r = np.array(r)[:,::-1]
+    g = np.array(g)[:,::-1]
+    b = np.array(b)[:,::-1]
+    to_wcs,shape_out = find_optimal_celestial_wcs([(r.shape,from_wcs)])
+    r, footprint = reproject_interp((r, from_wcs), to_wcs, shape_out = shape_out)
+    g, footprint = reproject_interp((g, from_wcs), to_wcs, shape_out = shape_out)
+    b, footprint = reproject_interp((b, from_wcs), to_wcs, shape_out = shape_out)
+    out = np.nan_to_num([r,g,b])
+    return out, to_wcs
