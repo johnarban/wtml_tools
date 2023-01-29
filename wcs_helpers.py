@@ -89,7 +89,7 @@ def get_quadrant(x, y):
         raise ValueError('x and y are zero!')
 
 
-def get_rot(cd, wwt = True):
+def get_rot(cd, wwt = False):
     """Return the rotation angle of the CD matrix.
     This can be measured two ways:
     === Method 1 === (@astrometry.net/net/wcs.py#L80)
@@ -116,7 +116,7 @@ def get_rot(cd, wwt = True):
         T = parity * cd[0,0] + cd[1,1]
         A = parity * cd[1,0] - cd[0,1]
         log(A,T)
-        return -atan2(- parity * A, T) * 180 / pi
+        return -atan2(- parity * A, -T) * 180 / pi
         
 def get_scale(cd):
     """Return the scale of the CD matrix.
@@ -193,10 +193,12 @@ def header_cd_to_cdelt_crota(header):
     cd = get_cd(header = header)
     header = remove_cd(header)
     
+    parity = get_parity(header = header)
+    
     cdelt = get_scale(cd)
     crota = get_rot(cd)
     header['CDELT1'] = cdelt[0]
     header['CDELT2'] = cdelt[1]
-    header['CROTA2'] = crota
+    header['CROTA2'] = crota 
     return header
     

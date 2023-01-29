@@ -28,7 +28,7 @@ from xml_indenter import smart_indent_xml, split_xml_attributes
 def get_scale_rot(header, force = False):
     # from astrometry.net/net/wcs.py
     wcs = wh.header_to_wcs(header)
-    cd = wh.wh.get_cd(wcs = wcs)
+    cd = wh.get_cd(wcs = wcs)
     
     scales = wh.get_scale(cd) # in degrees / pixel
     
@@ -47,6 +47,8 @@ def add_scale_rot(header, from_header = None):
         scale, rotation, parity = get_scale_rot(header)
     else:
         scale, rotation, parity = get_scale_rot(from_header)
+    # if parity > 0:
+    #     rotation = 180 - rotation
     header['CDELT1'] = scale[0]
     header['CDELT2'] = scale[1]
     header['CROTA2'] = rotation
@@ -59,17 +61,22 @@ def do_parity_inversion(header, im):
     # flip image top to bottom 
     # from https://github.com/WorldWideTelescope/wwt-aligner/blob/master/backend/wwt_aligner/driver.py#L449
     parity = wh.get_parity(header = header)
-    if parity > 0:
+    if parity < 0:
         print('parity inversion not needed')
         # WWT requires images with negative parity
         return header
     print('doing parity inversion')
     do_add_naxisi = 'NAXIS1' in header
-    wcs = WCS(header)
-    hdwork = wcs.to_header(relax=False)
+    # wcs = WCS(header)
+    # hdwork = wcs.to_header(relax=False)
+    hdwork = header.copy()
     hdwork['CRPIX2'] = im.height + 1 - hdwork['CRPIX2']
-    hdwork['PC1_2'] *= -1
-    hdwork['PC2_2'] *= -1
+    try:
+        hdwork['PC1_2'] *= -1
+        hdwork['PC2_2'] *= -1
+    except KeyError:
+        hdwork['CD1_2'] *= -1
+        hdwork['CD2_2'] *= -1
     hdwork = wh.add_NAXES(hdwork,im, add_naxisi = do_add_naxisi)
     return hdwork
 
@@ -97,7 +104,7 @@ def rgb_reproject(image, header):
     
    
    
-def output_avm(im, wcs, name='test', suffix = '', path_out='./', ext='jpg',  add_rot = False):
+def output_avm(im, header, name='test', suffix = '', path_out='./', ext='jpg',  add_rot = False):
     
     if len(suffix) > 0 and '_' != suffix[0]:
         suffix = '_' + suffix
@@ -112,14 +119,17 @@ def output_avm(im, wcs, name='test', suffix = '', path_out='./', ext='jpg',  add
     im.save(temp)
     
     
-    hdr = wcs.to_header()
-    hdr = wh.add_NAXES(hdr,im)
+    # hdr = wcs.to_header()
+    # hdr = wh.add_NAXES(hdr,im)
     
-    if add_rot:
-        hdr = add_scale_rot(hdr)
-        wcs = WCS(hdr, relax = True)
+    # if add_rot:
+    #     hdr = add_scale_rot(hdr)
+    #     wcs = WCS(hdr, relax = True)
     
-    avm = AVM.from_wcs(wcs, shape = (im.height, im.width))
+    if isinstance(header, WCS):
+        avm = AVM.from_wcs(header, shape = (im.height, im.width))
+    else:
+        avm = AVM.from_header(header)
     
     avm.embed(temp,out_tagged)
     
@@ -159,6 +169,8 @@ def add_avm_tags_simple(image, name = None, wcsfile = None, use_inversion = True
 
     header = get_header(wcsfile, clean_all=True)
     header = wh.add_NAXES(header,im, add_naxisi = True)
+    print('Original parity: ', wh.get_parity(header = header))
+
     wcs = WCS(header)
     
     if use_inversion:
@@ -170,10 +182,13 @@ def add_avm_tags_simple(image, name = None, wcsfile = None, use_inversion = True
             scale = wh.get_scale(new_header)
             new_header['CDELT1'] = scale[0]
             new_header['CDELT2'] = scale[1]
+        wcs_for_embed = WCS(new_header)
+        print('New parity: ', wh.get_parity(header = header))
+
     else:
         new_header = add_scale_rot(header)
         new_header = wh.remove_cd(new_header)
-    wcs_for_embed = WCS(new_header)
+        wcs_for_embed = WCS(new_header)
     out_tagged, avm = output_avm(im, wcs_for_embed, 
                             name=name,
                             suffix = suffix, 
@@ -248,19 +263,6 @@ def print_tree(node, level=0, print_attributes=False):
     for child in node:
         print_tree(child, level+1, print_attributes=print_attributes)
         
-
-
-# create dict out of xml file
-# https://stackoverflow.com/questions/10097477/convert-xml-to-dictionary-using-elementtree
-def xml_to_dict(xml):
-    d = {}
-    for child in xml:
-        d[child.tag] = xml_to_dict(child)
-    if xml.attrib:
-        d['attributes'] = xml.attrib
-    # if xml.text:
-    #     d['text'] = xml.text.strip()
-    return d 
 
 def create_imageset_dict(name, rot, crval, offset, scale, height, width, url, parity, cd):
     print('  create_imageset_dict')
