@@ -43,26 +43,28 @@ def get_header(wcsfile, clean = False, clean_sip = False, clean_all = False):
     return header
 
 
-def get_scale_rot(header, force = False):
+def get_scale_rot(header, force = False, wwt = False):
     # from astrometry.net/net/wcs.py
     wcs = wh.header_to_wcs(header)
     cd = wh.get_cd(wcs = wcs)
     
+    
     scales = wh.get_scale(cd) # in degrees / pixel
     
-    rot = wh.get_rot(cd) # in degress
+    rot = wh.get_rot(cd, wwt = wwt) # in degress
     
     parity = wh.get_parity(cd) # 1 or -1
-
-    print(f'scale: {scales}, rot: {rot:.3f}, parity: {parity}')
+    
+    print('Scale, rotation, parity from input header:')
+    print(f'\tscale: {scales}\n\trot: {rot:.3f}\n\tparity: {parity}')
     
     return scales, rot, parity
 
 
-def add_scale_rot(header, from_header = None):
+def add_scale_rot(header, from_header = None , wwt = False):
     header = header.copy()
     if from_header is None:
-        scale, rotation, parity = get_scale_rot(header)
+        scale, rotation, parity = get_scale_rot(header, wwt = wwt)
     else:
         scale, rotation, parity = get_scale_rot(from_header)
     # if parity > 0:
@@ -80,22 +82,15 @@ def do_parity_inversion(header, im, force = False):
     # from https://github.com/WorldWideTelescope/wwt-aligner/blob/master/backend/wwt_aligner/driver.py#L449
     parity = wh.get_parity(header = header)
     if (parity < 0) and not force:
-        print('parity inversion not needed')
+        print('parity inversion not needed: wwt needs JPEGs to have negative parity')
         # WWT requires images with negative parity
         return header
     print('doing parity inversion')
-    do_add_naxisi = 'NAXIS1' in header
     # wcs = WCS(header)
     # hdwork = wcs.to_header(relax=False)
-    hdwork = header.copy()
-    hdwork['CRPIX2'] = im.height + 1 - hdwork['CRPIX2']
-    try:
-        hdwork['PC1_2'] *= -1
-        hdwork['PC2_2'] *= -1
-    except KeyError:
-        hdwork['CD1_2'] *= -1
-        hdwork['CD2_2'] *= -1
-    hdwork = wh.add_NAXES(hdwork,im, add_naxisi = do_add_naxisi)
+    hdwork = wh.flip_parity(header, im.height)
+    if 'NAXIS1' not in header:
+        hdwork = wh.add_NAXES(hdwork,im)
     return hdwork
        
    
@@ -107,25 +102,20 @@ def output_avm(im, header, name='test', suffix = '', path_out='./', ext='jpg',  
     
     path_out = path_out.rstrip('/')
     out_tagged = path_out + '/' + name + '_tagged.' + ext
-    print(f'outputting {name} to {out_tagged}')
+    print(f'outputting AVM tagged {name} to {out_tagged}')
     
     # make sure we a have a valid JPEG for AVM to work with
     temp = 'temp_can_delete.' + ext # temporary_file
     im.save(temp)
     
-    
-    # hdr = wcs.to_header()
-    # hdr = wh.add_NAXES(hdr,im)
-    
-    # if add_rot:
-    #     hdr = add_scale_rot(hdr)
-    #     wcs = WCS(hdr, relax = True)
-    
     if isinstance(header, WCS):
-        avm = AVM.from_wcs(header, shape = (im.height, im.width))
-    else:
-        hd = wh.header_cd_to_cdelt_crota(header)
-        avm = AVM.from_header(hd)
+        header = header.to_header(relax = True)
+        header = wh.add_NAXES(header,im)
+        # avm = AVM.from_wcs(header, shape = (height, width))
+
+    hd = wh.make_avm_header(header) # puts scale, rot in header, removing cd matrix
+    avm = AVM.from_header(hd)
+    print(avm)
     
     avm.embed(temp,out_tagged)
     
@@ -147,18 +137,19 @@ def add_avm_tags_simple(image, name = None, wcsfile = None, use_inversion = True
 
     header = get_header(wcsfile, clean_all=True)
     header = wh.add_NAXES(header,im, add_naxisi = True)
-    print('Original parity: ', wh.get_parity(header = header))
-
-    wcs = WCS(header)
+    # print('Original parity: ', wh.get_parity(header = header))
+    # print('Original CD matrix: ', wh.pretty_print_matrix(wh.get_cd(header = header)))
     
     if use_inversion:
         new_header = do_parity_inversion(header,im) 
         wcs_for_embed = WCS(new_header)
-        print('New parity: ', wh.get_parity(header = header))
+        # print('New parity: ', wh.get_parity(header = header))
+        # print('Original CD matrix: ', wh.pretty_print_matrix(wh.get_cd(header = header)))
 
     else:
-        new_header = add_scale_rot(header)
-        new_header = wh.remove_cd(new_header)
+        # new_header = add_scale_rot(header)
+        # new_header = wh.remove_cd(new_header)
+        new_header = header
         wcs_for_embed = WCS(new_header)
     out_tagged, avm = output_avm(im, new_header, 
                             name=name,
@@ -166,7 +157,7 @@ def add_avm_tags_simple(image, name = None, wcsfile = None, use_inversion = True
                             path_out=path_out, 
                             add_rot = add_rot,
                             ext=ext)
-    return header, wcs, new_header, wcs_for_embed, avm, out_tagged, im
+    return header, WCS(header), new_header, wcs_for_embed, avm, out_tagged, im
     
  
 
@@ -182,8 +173,34 @@ def preview_image(image,coords=None):
     g.tick_labels.set_style('colons')
     g.show_rgb()
     return g
+
+def wtml_header(header):
+    header = header.copy()
+    has_cd = 'CD1_1' in header
+    if has_cd:
+        print('\tHeader has CD matrix')
+    has_crota = 'CROTA2' in header
+    if has_crota:
+        print('\tHeader has CROTA')
+    has_cdelt = 'CDELT1' in header
+    if has_cdelt:
+        print('\tHeader has CDELT')
+    has_pc = 'PC1_1' in header
+    if has_pc:
+        print('\tHeader has PC matrix')
     
+    wcs = WCS(header)
+    crpix = [(header['NAXIS1']+1)/2,(header['NAXIS2']+1)/2]
+    crval =  wcs.wcs_pix2world(*crpix,1)
+    offset = crpix
+    cd = wh.get_cd(wcs)
+    scales, rot, parity = get_scale_rot(header, wwt = True)
+    scale = np.sqrt(np.abs(scales[0]*scales[1]))
+
+    return rot, crval, offset, scale, cd, parity
     
+
+
 def create_wtml(header,im,
                 name='test',
                 url = None,
@@ -197,44 +214,29 @@ def create_wtml(header,im,
         out = name + '.wtml'
     print('writing to',out)
     
-    parity = wh.get_parity(header = header)
-    if parity < 0:
-        header = do_parity_inversion(header,im, force=True)
-    
-    wcs = WCS(header)
-    # move reference to center of the image
-    # get the specs we need for the wtml file
-    # crpix = header['CRPIX1'],header['CRPIX2']
-    # crval = header['CRVAL1'],header['CRVAL2']
-    crpix = [(header['NAXIS1']+1)/2,(header['NAXIS2']+1)/2]
-    crval =  wcs.wcs_pix2world(*crpix,1)
-    offset = crpix
-    # crpix = [0,0]
-    # crval = wcs.wcs_pix2world([[crpix[0],crpix[1]]],1,)[0]
-    # offset =  0,(header['NAXIS2']+1)
-    
-    cd = wh.get_cd(wcs)
-    scales, rot, parity = get_scale_rot(header)
-    scale = np.sqrt(np.abs(scales[0]*scales[1]))
     if url is None:
-        print('I need a url')
-        return 0
-    url = url
+        raise ValueError('I need a url')
+    
+    rot, crval, offset, scale, cd, parity = wtml_header(header)
+    
     imageset = create_imageset_dict(name, rot, crval, offset, scale,
                                         im.height, im.width, url, parity, cd)
+
     folder = set_folder(name)
-    ra, dec = wcs.wcs_pix2world((header['NAXIS1']-1)/2,(header['NAXIS2']-1)/2,1)
-    place = set_place(name,ra/15, dec)
-    # add imageset to xml
-    # tree = parse_xml('blank.wtml')
-    # root = tree.getroot()
+    place = set_place(name,crval[0]/15, crval[1])
+    
+    # print('Creating WTML file')
     el_imageset = ET.Element('ImageSet', attrib = imageset)
+    
     el_credits = ET.Element('Credits')
     el_credits.text = credits
+    
     el_credits_url = ET.Element('CreditsUrl')
     el_credits_url.text = credits_url
+    
     el_description = ET.Element('Description')
     el_description.text = 'description'
+    
     el_thumbnail_url = ET.Element('ThumbnailUrl')
     el_thumbnail_url.text = thumbnail_url or 'https://nova.astrometry.net/image/16942765'
     
@@ -261,13 +263,10 @@ def create_wtml(header,im,
 
    
 def create_imageset_dict(name, rot, crval, offset, scale, height, width, url, parity, cd):
-    print('  create_imageset_dict')
+    print('\nCreating ImageSet dict')
     print('  name',name)
     print('  parity',parity)
-    bottoms_up = parity < 0
-    if bottoms_up:
-        # in negative parity the rotation needs to be reverse 
-        rot = -rot   
+    bottoms_up = parity > 0 
     print('  bottoms_up',bottoms_up)
     print('  rot',rot)
     print('  crval',crval)
@@ -318,7 +317,7 @@ def create_imageset_dict(name, rot, crval, offset, scale, height, width, url, pa
     }
     
     if imageset['Projection'] == 'SkyImage':
-        imageset['BaseDegreesPerTile'] =  str(np.sqrt(cd[0,1]**2 + cd[1,1]**2)) # scal_y
+        imageset['BaseDegreesPerTile'] =  str(scale) # str(np.sqrt(cd[0,1]**2 + cd[1,1]**2)) # scal_y
     else:
         imageset['BaseDegreesPerTile'] =  str(max(width,height) * scale) #str(np.sqrt(cd[0,1]**2 + cd[1,1]**2)) #str(height_arcmin * max(height,width) / (60 * height))
     
@@ -388,3 +387,15 @@ def rgb_reproject(image, header):
     b, footprint = reproject_interp((b, from_wcs), to_wcs, shape_out = shape_out)
     out = np.nan_to_num([r,g,b])
     return out, to_wcs
+
+
+def avm_to_wtml(avm):
+
+    avm_header = avm.to_wcs().to_header()
+    avm_header['NAXIS'] = 2
+    avm_header['NAXIS1'] = avm.Spatial.ReferenceDimension[0]
+    avm_header['NAXIS2'] = avm.Spatial.ReferenceDimension[1]
+    
+    avm_header = wtml.wh.flip_parity(avm_header)
+    
+    return wtml.wtml_header(avm_header)
