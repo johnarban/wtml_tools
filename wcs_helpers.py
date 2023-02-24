@@ -15,7 +15,7 @@ def set_debug_level(level):
         DEBUG_LEVEL = level
 
 
-def log(arg, level=None):
+def log(arg: str, level=0):
     # check if level is a string
     if isinstance(level, str):
         level = DEBUG_LEVELS[level]
@@ -195,23 +195,23 @@ def get_rot_from_cd(cd, wwt=False):
     """
     log("Finding the rotation angle")
     cd_sign = get_cd_sign(cd)
-    log("\tCD sign =", cd_sign)
+    log(f"\tCD sign ={cd_sign}", level = 'DEBUG')
     # wwt
     T = cd[1, 1]
     A = cd[0, 1]
     rot_wwt = atan2(-cd_sign * A, -T) * 180 / pi
-    log(f"\tRot (WWT) = {rot_wwt:0.3f} degrees", level=1)
+    log(f"\tRot (WWT) = {rot_wwt:0.3f} degrees", level = 'DEBUG')
 
     # astrometry.net
     T = cd_sign * cd[0, 0] + cd[1, 1]
     A = cd_sign * cd[1, 0] - cd[0, 1]
     rot_astrom = -atan2(-cd_sign * A, -T) * 180 / pi
-    log(f"\tRot (Astrometry.net) = {rot_astrom:0.3f} degrees", level=1)
+    log(f"\tRot (Astrometry.net) = {rot_astrom:0.3f} degrees", level = 'DEBUG')
     if wwt:
-        log("\tUsing WWT method", level=1)
+        log(f"\tUsing WWT method. Angle :{rot_wwt:0.3f}", level='INFO')
         return rot_wwt
     else:
-        log("\tUsing Astrometry.net method", level=1)
+        log(f"\tUsing Astrometry.net method. Angle :{rot_astrom:0.3f}", level='INFO')
         return rot_astrom
 
 
@@ -298,41 +298,6 @@ def remove_cd(header, verbose=False):
     return header
 
 
-def make_avm_header(header):
-    """
-    Convert a header with a CD matrix to a header with CDELT and CROTA keywords.
-    """
-    header = header.copy()
-
-    scale, rot, parity = get_scale_rot(header)
-
-    parity = get_parity(header=header)
-    flipped_parity = False
-    if is_JPEGLike(parity):
-        flipped_parity = True
-        log("This has JPEG-like parity", level=0)
-        log("flip parity for avm", level=1)
-        header = flip_parity(header)
-
-    scale, rot, parity = get_scale_rot(header)
-
-    cdelt1 = scale[0]
-    cdelt2 = scale[1]
-    crota = rot
-
-    if flipped_parity:  # not is_JPEGLike(parity):
-        log("Parity was flipped so, flipping cdelt2 (lat axis)", level=1)
-        cdelt2 = -cdelt2
-        cdelt1 = cdelt1
-        crota = crota
-
-    header["CDELT1"] = cdelt1
-    header["CDELT2"] = cdelt2
-    header["CROTA2"] = crota
-    header = remove_cd(header)
-    return header
-
-
 def flip_parity2(header, width=None, inplace=False):
     """
     Flip the parity of the FITS header
@@ -372,4 +337,25 @@ def flip_parity2(header, width=None, inplace=False):
     # log(f'New CD matrix: cd_sign = {new_cd_sign}')
     # log(pretty_print_matrix(new_pixel_scale_matrix))
 
+    return header
+
+def blank_header():
+    # Create a blank FITS header
+    header = Header()
+    naxis1 = 256
+    naxis2 = 256
+
+    # Set the coordinate system to ICRS
+    header['CTYPE1'] = 'RA---TAN'
+    header['CTYPE2'] = 'DEC--TAN'
+    header['CRVAL1'] = 0.0
+    header['CRVAL2'] = 0.0
+    header['CRPIX1'] = naxis1 / 2 + 0.5
+    header['CRPIX2'] = naxis2 / 2 + 0.5
+    header['CUNIT1'] = 'deg'
+    header['CUNIT2'] = 'deg'
+    header['CD1_1'] = -0.0002777777777777778
+    header['CD1_2'] = 0.0
+    header['CD2_1'] = 0.0
+    header['CD2_2'] = 0.0002777777777777778
     return header
