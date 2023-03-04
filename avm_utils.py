@@ -40,9 +40,9 @@ def make_avm_header(header):
     header = header.copy()
 
     parity = wh.get_parity(header=header)
-    flipped_parity = False
+    flip_parity = False
     if wh.is_JPEGLike(parity):
-        flipped_parity = True
+        flip_parity = True
         log("This has JPEG-like parity", level=0)
         log("flip parity for avm", level=1)
         header = wh.flip_parity(header)
@@ -53,7 +53,7 @@ def make_avm_header(header):
     cdelt2 = scale[1]
     crota = rot
 
-    if flipped_parity:  # not wh.is_JPEGLike(parity):
+    if flip_parity:  # not wh.is_JPEGLike(parity):
         log("Parity was flipped so, flipping cdelt2 (lat axis)", level=1)
         cdelt2 = -cdelt2
         cdelt1 = cdelt1
@@ -98,9 +98,11 @@ def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", r
     
     if isinstance(image, str) & (name == "image"):
         name = os.path.basename(image).split(".")[0]
+        if path_out == ".":
+            path_out = os.path.dirname(image)
     
     # ensure we have a PIL image
-    image = ih.get_PIL_image(image)
+    # image = ih.get_PIL_image(image)
     
     log(f"\n ****** Embedding AVM in {ext} file ****** \n", level='INFO')
     name = name + ih.get_suffix(suffix)
@@ -109,7 +111,8 @@ def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", r
 
     if isinstance(header, WCS):
         header = header.to_header(relax=True)
-        header = wh.add_NAXES(header, image)
+        size = ih.get_image_size(image)
+        header = wh.add_NAXES(header, *size)
 
     # make_avm_header puts scale, rot in header, removes cd matrix
     # and applies parity flip if needed
@@ -119,9 +122,10 @@ def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", r
     
     
     temp = "temp_can_delete." + ext 
-    image.save(temp)
+    with Image.open(image) as im:
+        im.save(temp)
     avm.embed(temp, save_image_path)
-    os.remove(temp)
+    # os.remove(temp)
     
     log(f"AVM tagged image saved to {save_image_path}", level='INFO')
 
@@ -145,20 +149,8 @@ def add_avm_tags(image_path, wcsfile="wcs.fits", name=None, path_out=".", suffix
         name = image_path.replace(f".{ext}", "")
 
     header = ih.get_clean_header(wcsfile)
-    header = wh.add_NAXES(header, im, add_naxisi=True)
+    header = wh.add_NAXES(header, *im.size, add_naxisi=True)
 
     out_tagged, avm = write_avm(im, header, name=name, suffix=suffix, path_out=path_out, ext=ext)
     return header, WCS(header), avm, out_tagged, im
 
-
-
-from wtml_tools import header_to_wtml_params
-def avm_to_wtml(avm):
-    avm_header = avm.to_wcs().to_header()
-    avm_header["NAXIS"] = 2
-    avm_header["NAXIS1"] = avm.Spatial.ReferenceDimension[0]
-    avm_header["NAXIS2"] = avm.Spatial.ReferenceDimension[1]
-
-    avm_header = wh.flip_parity(avm_header)
-
-    return header_to_wtml_params(avm_header)

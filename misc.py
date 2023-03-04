@@ -91,7 +91,7 @@ def do_parity_inversion(header, im, force=False):
     # hdwork=wcs.to_header(relax=False)
     hdwork = wh.flip_parity(header, im.height)
     if "NAXIS1" not in header:
-        hdwork = wh.add_NAXES(hdwork, im)
+        hdwork = wh.add_NAXES(hdwork, *im.size[::-1])
     return hdwork
 
 

@@ -7,26 +7,9 @@ from pyavm import AVM
 from pyavm.exceptions import NoXMPPacketFound
 import wcs_helpers as wh
 reload(wh) 
-DEBUG_LEVELS = {"DEBUG": 0, "INFO": 1}
-DEBUG_LEVEL = 1
+from logger import log, set_debug_level
 FITS_EXTENSIONS = [".fits", ".fit", ".fts", ".fz", ".fits.fz"]
 IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"]
-
-
-def set_debug_level(level):
-    if isinstance(level, str):
-        DEBUG_LEVEL = DEBUG_LEVELS[level]
-    else:
-        DEBUG_LEVEL = level
-
-
-def log(arg: str, level=0):
-    # check if level is a string
-    if isinstance(level, str):
-        level = DEBUG_LEVELS[level]
-
-    if level >= DEBUG_LEVEL:
-        print(arg)
 
 
 
@@ -42,13 +25,32 @@ def _convertToSimpleJPEG(filename):
 
 def get_PIL_image(im):
     if isinstance(im, str):
-        return Image.open(im)
+        with Image.open(im) as pil_im:
+            im = pil_im
+        return im
     elif isinstance(im, Image):
         return im
 
+def get_image_size(image_path):
+    """
+    Get the image size from a PIL image
+    
+    returns (height, width)
+    """
+    if isinstance(image_path, str):
+        with Image.open(image_path) as im:
+            height, width = im.size
+        return height, width
+    elif isinstance(image_path, Image):
+        height, width = im.size
+        return im.size
+    elif isinstance(image_path, tuple):
+        height, width = image_path
+    return height, width
 
 def get_suffix(suffix):
-    return ("_" if suffix.find("_") != 0 else "") + suffix
+    # add "_" to the suffix if it doesn't start with "_" and isn't empty
+    return ("_" if suffix and suffix.find("_") != 0 else "") + suffix
 
 def get_image_header(image_file, wcs_file = None):
     """
@@ -64,7 +66,7 @@ def get_image_header(image_file, wcs_file = None):
         elif os.path.splitext(image_file)[1] in IMAGE_EXTENSIONS:
             try:
                 log("Reading AVM from image file", level=1)
-                avm = AVM.from_file(image_file)
+                avm = AVM.from_image(image_file)
                 return avm.to_wcs().to_header(), avm
             except:
                 log("Could not read AVM from image file", level=2)
@@ -73,11 +75,15 @@ def get_image_header(image_file, wcs_file = None):
                 
 def get_avm(filename):
     try:
-        return AVM.from_file(filename)
+        return AVM.from_image(filename)
     except NoXMPPacketFound:
          return None
 
 def get_clean_header(wcsfile, remove_comments=True, remove_sip = True):
+    if isinstance(wcsfile, str):
+        log(f"Reading header from file {wcsfile}", level='INFO')
+    else:
+        print(wcsfile)
     header = fits.Header.fromfile(wcsfile)
     if remove_comments:
         log("Cleaning header", level='DEBUG')

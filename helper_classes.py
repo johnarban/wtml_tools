@@ -12,27 +12,10 @@ import wcs_helpers as wh
 reload(ih)
 reload(wh)
 
-DEBUG_LEVELS = {"DEBUG": 0, "INFO": 1}
-DEBUG_LEVEL = 1
+from logger import log, set_debug_level
+
 FITS_EXTENSIONS = [".fits", ".fit", ".fts", ".fz", ".fits.fz"]
 IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"]
-
-
-def set_debug_level(level):
-    global DEBUG_LEVEL
-    if isinstance(level, str):
-        DEBUG_LEVEL = DEBUG_LEVELS[level]
-    else:
-        DEBUG_LEVEL = level
-
-
-def log(arg: str, level=0):
-    # check if level is a string
-    if isinstance(level, str):
-        level = DEBUG_LEVELS[level]
-
-    if level >= DEBUG_LEVEL:
-        print(arg)
 
 
 class ImageHeader:
@@ -61,7 +44,16 @@ class ImageHeader:
             log(f"Could not find header for {self.image_path}", level="INFO")
             log(f"Creating blank header", level="INFO")
             self.header = wh.blank_header()
-
+        
+        self.clean_header()
+        self.add_naxis_params()
+        
+        log(f"Image header for {self.image_path}:", level="DEBUG")
+        log("WCS file: " + str(self.wcsfile), level="DEBUG")
+    
+    def __repr__(self):
+        return self.header.__repr__()
+    
     def _valid_wcs_file(self, wcsfile):
         """
         Check if the WCS file exists and return the path to the file.
@@ -99,9 +91,20 @@ class ImageHeader:
                 raise Exception(
                     f"Could not find WCS file {wcsfile} for {self.image_path}"
                 )
-
-
-
+    
+    def clean_header(self):
+        """
+        Remove all keys from the header that are not needed for the WTML file.
+        """
+        self.header = wh.clean_header(self.header)
+        self.header = wh.remove_sip(self.header)
+    
+    def add_naxis_params(self):
+        """
+        Add NAXIS1 and NAXIS2 to the header.
+        """
+        size = ih.get_image_size(self.image_path)
+        self.header = wh.add_NAXES(self.header, *size[::-1])
 
 class ImageSet:
     
