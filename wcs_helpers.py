@@ -3,26 +3,7 @@ from astropy.wcs import WCS
 from math import atan2, atan
 from astropy.wcs.utils import _is_cd_orthogonal
 from numpy import pi
-
-DEBUG_LEVELS = {"DEBUG": 0, "INFO": 1}
-DEBUG_LEVEL = 1
-
-
-def set_debug_level(level):
-    if isinstance(level, str):
-        DEBUG_LEVEL = DEBUG_LEVELS[level]
-    else:
-        DEBUG_LEVEL = level
-
-
-def log(arg: str, level=0):
-    # check if level is a string
-    if isinstance(level, str):
-        level = DEBUG_LEVELS[level]
-
-    if level >= DEBUG_LEVEL:
-        print(arg)
-
+from logger import log, set_debug_level
 
 # The functions defined in the file are as follows:
 # - get_cd
@@ -270,15 +251,15 @@ def remove_sip(header, inplace=False, verbose=False):
 
 
 # fixup headers
-def add_NAXES(header, im, add_naxisi=True, inplace=False, verbose=False):
+def add_NAXES(header, width = None, height = None, add_naxisi=True, inplace=False, verbose=False):
     """Add NAXIS and NAXIS1, NAXIS2 keywords to a header."""
     log("adding NAXES", level=0)
     if not inplace:
         header = header.copy()
     header["NAXIS"] = 2
     if add_naxisi:
-        header["NAXIS1"] = im.width
-        header["NAXIS2"] = im.height
+        header["NAXIS1"] = width
+        header["NAXIS2"] = height
     return header
 
 

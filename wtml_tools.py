@@ -27,27 +27,10 @@ reload(au)
 reload(hc)
 from xml_indenter import smart_indent_xml, split_xml_attributes
 
-DEBUG_LEVELS = {"DEBUG": 0, "INFO": 1}
-DEBUG_LEVEL = 1
+from logger import log, set_debug_level
 FITS_EXTENSIONS = [".fits", ".fit", ".fts", ".fz", ".fits.fz"]
 IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"]
 
-
-def set_debug_level(level):
-    global DEBUG_LEVEL
-    if isinstance(level, str):
-        DEBUG_LEVEL = DEBUG_LEVELS[level]
-    else:
-        DEBUG_LEVEL = level
-
-
-def log(arg: str, level=0):
-    # check if level is a string
-    if isinstance(level, str):
-        level = DEBUG_LEVELS[level]
-
-    if level >= DEBUG_LEVEL:
-        print(arg)
 
 def header_to_wtml_params(header):
     header = header.copy()
@@ -68,11 +51,11 @@ def header_to_wtml_params(header):
     crpix = [(header["NAXIS1"] + 1) / 2, (header["NAXIS2"] + 1) / 2]
     crval = wcs.wcs_pix2world(*crpix, 1)
     offset = crpix
-    cd = wh.get_cd(wcs)
+    # cd = wh.get_cd(wcs)
     scales, rot, parity = wh.get_scale_rot(header)
     scale = np.sqrt(np.abs(scales[0] * scales[1]))
 
-    return rot, crval, offset, scale, cd, parity
+    return rot, crval, offset, scale, parity
 
 
 def get_wwt_url(name, rot, crval, offset, scale, bottoms_up, url, thumb_url):
@@ -113,11 +96,11 @@ def create_imageset_dict(name, rot, crval, offset, scale, height, width, url, pa
         Name = name,
         Url = url,
         Rotation=rot,
-        CenterX=crval[0],
-        CenterY=crval[1],
+        CenterX=crval[1],
+        CenterY=crval[0],
         BottomsUp=bottoms_up,
-        OffsetX=offset[0],
-        OffsetY=offset[1],
+        OffsetX=offset[1],
+        OffsetY=offset[0],
     )
 
     if imageset.Projection == "SkyImage":
@@ -181,7 +164,7 @@ def set_xml_element(el, attribute=None, text=None):
 
 def create_wtml(
     header,
-    im,
+    image_path,
     name="test",
     url=None,
     credits="credits",
@@ -195,19 +178,21 @@ def create_wtml(
     if out is None:
         out = name + ".wtml"
     log(f"WTML file: {out}", level="INFO")
-
+    
+    im = ih.get_PIL_image(image_path)
+    height, width = im.size
     if url is None:
         raise ValueError("I need a url")
 
     rot, crval, offset, scale, parity = header_to_wtml_params(header)
 
     imageset = create_imageset_dict(
-        name, rot, crval, offset, scale, im.height, im.width, url, parity
+        name, rot, crval, offset, scale, height, width, url, parity
     )
 
     folder = set_folder(name)
     # in WWT zoom is the FOV * 6
-    zoom = int(6 * scale * max(im.height, im.width) * 1.7)  # 1.7 is a fudge factor
+    zoom = int(6 * scale * max(height, width) * 1.7)  # 1.7 is a fudge factor
     place = set_place(name=name, ra=crval[0] / 15, dec=crval[1], zoom=zoom)
 
     # log('Creating WTML file')
@@ -247,31 +232,74 @@ def create_wtml(
     split_xml_attributes(out, field="ImageSet")
     return tree, imageset
 
-
-
+# what do we want to specify when creatng a wtml file?
+# name: Place and ImageSet name
+# wtml: Name of wtml file
+# image_url: where wtml file can find the image
+# thumb_url: where wtml file can find the image thumbnail
+# outdir: where to save the wtml file
 def create_wtml_from_image(
-    image_path, wcsfile=None, name=None, wtml_path=None, wtml_image_url=None, suffix=""):
+        image_path, 
+        wcsfile=None, 
+        wtml = None,
+        output_dir=None, 
+        name=None, 
+        image_url=None,
+        thumb_url=None,
+        suffix=""):
     """
     Create a WTML file from an image file.
     """
-
+    log(f"image_path: {image_path}", level="INFO")
     # Get the image
-    im = Image.open(image_path)
-    ext = os.path.splitext(image_path)[1]
+    ext = os.path.splitext(image_path)[1][1:]
     suffix = ih.get_suffix(suffix)
 
     if name is None:
-        name = image_path.replace(f".{ext}", "")
-
-    header = hc.ImageHeader(image_path, wcsfile=wcsfile).header
-    header = ih.get_clean_header(wcsfile)
-    header = wh.add_NAXES(header, im, add_naxisi=True)
+        name = os.path.splitext(os.path.basename(image_path))[0]
     
-    if wtml_path is None:
-        wtml_path = image_path.replace(f".{ext}", f"{suffix}.wtml")
-    elif os.path.isdir(wtml_path):
-        wtml_path = os.path.join(wtml_path, name + f"{suffix}.wtml")
-    tree, imageset = create_wtml(header, im, name=name, url=wtml_image_url or image_path, out=wtml_path)
+    image_header = hc.ImageHeader(image_path, wcsfile=wcsfile)
+    header =image_header.header
+    wcsfile = image_header.wcsfile
+    header = ih.get_clean_header(wcsfile)
+    header = wh.add_NAXES(header, *ih.get_image_size(image_path)[::-1], add_naxisi=True)
+    
+    if wtml is None:
+        wtml = os.path.basename(image_path).replace(f".{ext}", f"{suffix}.wtml")
+        wtml_dir = os.path.dirname(image_path)
+    else:
+        wtml_dir = os.path.dirname(wtml)
+        wtml = os.path.basename(wtml)
+    if output_dir is None:
+        if wtml_dir == '':
+            output_dir = os.path.dirname(image_path)
+        else:
+            output_dir = wtml_dir
+    
+    log(f"output_dir: {os.path.join(output_dir, wtml)}", level="INFO")
+    
+
+    if image_url is None:
+        image_url = image_path.replace(f".{ext}", f"{suffix}.{ext}")
+    else:
+        if ext != image_url[:-len(ext)]:
+            image_url = os.path.join(image_url, name + f"{suffix}.{ext}")
+    log(f"WTML Image URL: {image_url}", level="INFO")
+    
+    
+    tree, imageset = create_wtml(header, image_path, name = name, out=os.path.join(output_dir,wtml), url=image_url, thumbnail_url=thumb_url)
     
     return tree, imageset
 
+
+
+
+def avm_to_wtml(avm):
+    avm_header = avm.to_wcs().to_header()
+    avm_header["NAXIS"] = 2
+    avm_header["NAXIS1"] = avm.Spatial.ReferenceDimension[0]
+    avm_header["NAXIS2"] = avm.Spatial.ReferenceDimension[1]
+
+    avm_header = wh.flip_parity(avm_header)
+
+    return header_to_wtml_params(avm_header)
