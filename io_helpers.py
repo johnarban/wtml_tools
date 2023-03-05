@@ -39,14 +39,13 @@ def get_image_size(image_path):
     """
     if isinstance(image_path, str):
         with Image.open(image_path) as im:
-            height, width = im.size
-        return height, width
+            width, height = im.size
+        return width, height
     elif isinstance(image_path, Image):
-        height, width = im.size
         return im.size
     elif isinstance(image_path, tuple):
-        height, width = image_path
-    return height, width
+        # assume it is a tuple of (width, height)
+        return image_path
 
 def get_suffix(suffix):
     # add "_" to the suffix if it doesn't start with "_" and isn't empty

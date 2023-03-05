@@ -96,11 +96,11 @@ def create_imageset_dict(name, rot, crval, offset, scale, height, width, url, pa
         Name = name,
         Url = url,
         Rotation=rot,
-        CenterX=crval[1],
-        CenterY=crval[0],
+        CenterX=crval[0],
+        CenterY=crval[1],
         BottomsUp=bottoms_up,
-        OffsetX=offset[1],
-        OffsetY=offset[0],
+        OffsetX=offset[0],
+        OffsetY=offset[1],
     )
 
     if imageset.Projection == "SkyImage":
@@ -180,7 +180,7 @@ def create_wtml(
     log(f"WTML file: {out}", level="INFO")
     
     im = ih.get_PIL_image(image_path)
-    height, width = im.size
+    width, height = im.size
     if url is None:
         raise ValueError("I need a url")
 
@@ -260,9 +260,6 @@ def create_wtml_from_image(
     
     image_header = hc.ImageHeader(image_path, wcsfile=wcsfile)
     header =image_header.header
-    wcsfile = image_header.wcsfile
-    header = ih.get_clean_header(wcsfile)
-    header = wh.add_NAXES(header, *ih.get_image_size(image_path)[::-1], add_naxisi=True)
     
     if wtml is None:
         wtml = os.path.basename(image_path).replace(f".{ext}", f"{suffix}.wtml")

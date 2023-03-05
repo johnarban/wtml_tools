@@ -116,7 +116,8 @@ def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", r
 
     # make_avm_header puts scale, rot in header, removes cd matrix
     # and applies parity flip if needed
-    avm = AVM.from_header(make_avm_header(header))
+    header = make_avm_header(header)
+    avm = AVM.from_header(header)
     if remove_full_fits_header: avm.Spatial.FITSheader = ""
     log(avm.Spatial, level='DEBUG')
     

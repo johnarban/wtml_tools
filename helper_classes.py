@@ -103,8 +103,10 @@ class ImageHeader:
         """
         Add NAXIS1 and NAXIS2 to the header.
         """
-        size = ih.get_image_size(self.image_path)
-        self.header = wh.add_NAXES(self.header, *size[::-1])
+        if 'IMAGEH' in self.header:
+            width, height = (self.header['IMAGEW'],self.header['IMAGEH'])
+        # size = ih.get_image_size(self.image_path)
+        self.header = wh.add_NAXES(header = self.header, width = width, height = height)
 
 class ImageSet:
     
