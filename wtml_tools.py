@@ -25,7 +25,8 @@ reload(wh)
 reload(ih)
 reload(au)
 reload(hc)
-from xml_indenter import smart_indent_xml, split_xml_attributes
+import xml_indenter as xml
+reload(xml)
 
 from logger import log, set_debug_level
 FITS_EXTENSIONS = [".fits", ".fit", ".fts", ".fz", ".fits.fz"]
@@ -226,10 +227,10 @@ def create_wtml(
     el_folder = ET.Element("Folder", attrib=folder)
     el_folder.append(el_place)
 
-    smart_indent_xml(el_folder)
+    xml.smart_indent_xml(el_folder)
     tree = ET.ElementTree(el_folder)
     tree.write(out)
-    split_xml_attributes(out, field="ImageSet")
+    xml.split_xml_attributes(out, field="ImageSet")
     return tree, imageset
 
 # what do we want to specify when creatng a wtml file?
@@ -241,6 +242,7 @@ def create_wtml(
 def create_wtml_from_image(
         image_path, 
         wcsfile=None, 
+        use_avm = False,
         wtml = None,
         output_dir=None, 
         name=None, 
@@ -258,7 +260,7 @@ def create_wtml_from_image(
     if name is None:
         name = os.path.splitext(os.path.basename(image_path))[0]
     
-    image_header = hc.ImageHeader(image_path, wcsfile=wcsfile)
+    image_header = hc.ImageHeader(image_path, wcsfile=wcsfile, use_avm=use_avm)
     header =image_header.header
     
     if wtml is None:
@@ -278,9 +280,9 @@ def create_wtml_from_image(
 
     if image_url is None:
         image_url = image_path.replace(f".{ext}", f"{suffix}.{ext}")
-    else:
-        if ext != image_url[:-len(ext)]:
-            image_url = os.path.join(image_url, name + f"{suffix}.{ext}")
+    # else:
+    #     if ext != image_url[:-len(ext)]:
+    #         image_url = os.path.join(image_url, name + f"{suffix}.{ext}")
     log(f"WTML Image URL: {image_url}", level="INFO")
     
     
@@ -289,14 +291,3 @@ def create_wtml_from_image(
     return tree, imageset
 
 
-
-
-def avm_to_wtml(avm):
-    avm_header = avm.to_wcs().to_header()
-    avm_header["NAXIS"] = 2
-    avm_header["NAXIS1"] = avm.Spatial.ReferenceDimension[0]
-    avm_header["NAXIS2"] = avm.Spatial.ReferenceDimension[1]
-
-    avm_header = wh.flip_parity(avm_header)
-
-    return header_to_wtml_params(avm_header)

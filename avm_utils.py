@@ -10,6 +10,7 @@ import wcs_helpers as wh
 reload(wh)
 import io_helpers as ih
 reload(ih)
+import helper_classes as hc
 
 DEBUG_LEVELS = {"DEBUG": 0, "INFO": 1}
 DEBUG_LEVEL = 1
@@ -109,9 +110,12 @@ def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", r
 
     save_image_path = os.path.join(path_out, name + "_tagged." + ext)
 
-    if isinstance(header, WCS):
+    if header is None:
+        if isinstance(image, str):
+            ih.guess_wcs_filename(image_path = image)
+            header = size = hc.ImageHeader(image).header
+    elif isinstance(header, WCS):
         header = header.to_header(relax=True)
-        size = ih.get_image_size(image)
         header = wh.add_NAXES(header, *size)
 
     # make_avm_header puts scale, rot in header, removes cd matrix
@@ -135,7 +139,7 @@ def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", r
 
 
 
-def add_avm_tags(image_path, wcsfile="wcs.fits", name=None, path_out=".", suffix=""):
+def add_avm_tags(image_path, wcsfile=None, name=None, path_out=".", suffix=""):
     log(f"\n ****** Processing {image_path} ****** \n", level='INFO')
     im = Image.open(image_path)
     ext = image_path.split(".")[-1]
@@ -148,7 +152,10 @@ def add_avm_tags(image_path, wcsfile="wcs.fits", name=None, path_out=".", suffix
 
     if name is None:
         name = image_path.replace(f".{ext}", "")
-
+    
+    image_header = hc.ImageHeader(image_path, wcsfile=wcsfile)
+    header =image_header.header
+    
     header = ih.get_clean_header(wcsfile)
     header = wh.add_NAXES(header, *im.size, add_naxisi=True)
 

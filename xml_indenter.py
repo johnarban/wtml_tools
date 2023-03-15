@@ -1,4 +1,4 @@
- 
+import shlex
 
 # print out root and children as a tree showing attributes and values, recursively
 def print_tree(node, level=0, print_attributes=False):
@@ -34,11 +34,13 @@ def split_attributes(line):
     indent = line[:start]
     end = line.index('>')
     between = line[start+1:end]
-    parts = between.split(' ')
+    parts = shlex.split(between)
     tag = parts[0]
     attributes = {}
     for part in parts[1:]:
         key, value = part.split('=')
+        value = '"' + value + '"'
+        value.replace('""','"')
         attributes[key] = value
     return indent, tag, attributes
 

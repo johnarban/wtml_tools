@@ -128,6 +128,46 @@ def flip_parity(header, height=None, inplace=False):
 
     return header
 
+def flip_parity2(header, width=None, inplace=False):
+    """
+    Flip the parity of the FITS header
+    This cannot be done with a header that has only
+    scale and rotation matrix, it must have a CD or PC matrix.
+    We flip the parity by flipping the 1_2 and 2_2 elements of
+    PC/CD matrix
+    the height should be from NAXIS2, or given
+    """
+    if not inplace:
+        header = header.copy()
+    original_cd_sign = get_cd_sign(header=header)
+    original_pixel_scale_matrix = get_cd(header)
+    if width is None:
+        if "NAXIS1" in header:
+            width = header["NAXIS1"]
+        else:
+            raise ValueError("Cannot flip parity without width")
+
+    header["CRPIX1"] = width + 1 - header["CRPIX1"]
+    if "PC1_2" in header:
+        log("flipping PC")
+        header["PC1_1"] *= -1
+        header["PC2_1"] *= -1
+    elif "CD1_2" in header:
+        log("flipping CD")
+        header["CD1_1"] *= -1
+        header["CD2_1"] *= -1
+    else:
+        raise ValueError("Cannot flip parity without CD or PC matrix")
+    new_cd_sign = get_cd_sign(header=header)
+    new_pixel_scale_matrix = get_cd(header)
+
+    # pretty print the matrices showing the change
+    log(f"Original CD matrix: cd_sign = {original_cd_sign}", level=1)
+    log(pretty_print_matrix(original_pixel_scale_matrix), level=0)
+    log(f"New CD matrix: cd_sign = {new_cd_sign}", level=1)
+    log(pretty_print_matrix(new_pixel_scale_matrix), level=0)
+
+    return header
 
 def header_to_wcs(supposed_wcs):
     """Converts a header to a wcs object if it isn't already one."""
@@ -279,47 +319,6 @@ def remove_cd(header, verbose=False):
     return header
 
 
-def flip_parity2(header, width=None, inplace=False):
-    """
-    Flip the parity of the FITS header
-    This cannot be done with a header that has only
-    scale and rotation matrix, it must have a CD or PC matrix.
-    We flip the parity by flipping the 1_2 and 2_2 elements of
-    PC/CD matrix
-    the height should be from NAXIS2, or given
-    """
-    if not inplace:
-        header = header.copy()
-    # original_cd_sign = get_cd_sign(header = header)
-    # original_pixel_scale_matrix = get_cd(header)
-    if width is None:
-        if "NAXIS1" in header:
-            width = header["NAXIS1"]
-        else:
-            raise ValueError("Cannot flip parity without height")
-
-    header["CRPIX2"] = width + 1 - header["CRPIX2"]
-    if "PC1_2" in header:
-        log("flipping PC", level=0)
-        header["PC1_1"] *= -1
-        header["PC2_1"] *= -1
-    elif "CD1_2" in header:
-        log("flipping CD", level=0)
-        header["CD1_1"] *= -1
-        header["CD2_2"] *= -1
-    else:
-        raise ValueError("Cannot flip parity without CD or PC matrix")
-    # new_cd_sign = get_cd_sign(header = header)
-    # new_pixel_scale_matrix = get_cd(header)
-
-    # # pretty print the matrices showing the change
-    # log(f'Original CD matrix: cd_sign = {original_cd_sign}')
-    # log(pretty_print_matrix(original_pixel_scale_matrix))
-    # log(f'New CD matrix: cd_sign = {new_cd_sign}')
-    # log(pretty_print_matrix(new_pixel_scale_matrix))
-
-    return header
-
 def blank_header():
     # Create a blank FITS header
     header = Header()
@@ -340,3 +339,4 @@ def blank_header():
     header['CD2_1'] = 0.0
     header['CD2_2'] = 0.0002777777777777778
     return header
+

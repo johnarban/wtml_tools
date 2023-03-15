@@ -2,6 +2,7 @@ import os
 from importlib import reload
 from math import sqrt
 import json
+from pyavm import AVM
 
 from astropy.io.fits import Header
 from astropy.wcs import WCS
@@ -24,25 +25,25 @@ class ImageHeader:
         self.basename = os.path.basename(image_path)
         self.dirname = os.path.dirname(image_path)
         self.imagename = os.path.splitext(self.basename)[0]
-
+        self.wcsfile = wcsfile
         self.header = None
 
         self.use_avm = use_avm
         self.avm = ih.get_avm(image_path)
         if use_avm and self.avm is not None:
-            self.header = self.avm.to_wcs().to_header()
+            self.header = self.header_from_avm(self.avm)
         else:
             use_avm = False
 
-        self.wcsfile = self._valid_wcs_file(wcsfile)
-        if self.wcsfile is not None:
-            self.wcs_header = Header.fromfile(self.wcsfile)
-            if not self.use_avm:
-                self.header = self.wcs_header
+            self.wcsfile = self._valid_wcs_file(self.wcsfile)
+            if self.wcsfile is not None:
+                self.wcs_header = Header.fromfile(self.wcsfile)
+                if not self.use_avm:
+                    self.header = self.wcs_header
 
         if self.header is None:
             log(f"Could not find header for {self.image_path}", level="INFO")
-            log(f"Creating blank header", level="INFO")
+            log("Creating blank header", level="INFO")
             self.header = wh.blank_header()
         
         self.clean_header()
@@ -91,7 +92,7 @@ class ImageHeader:
                 raise Exception(
                     f"Could not find WCS file {wcsfile} for {self.image_path}"
                 )
-    
+
     def clean_header(self):
         """
         Remove all keys from the header that are not needed for the WTML file.
@@ -99,14 +100,29 @@ class ImageHeader:
         self.header = wh.clean_header(self.header)
         self.header = wh.remove_sip(self.header)
     
+    def _get_naxis_params(self):
+        if (self.header is not None) and ('IMAGEH' in self.header):
+            width, height = (self.header['IMAGEW'],self.header['IMAGEH'])
+        else:
+            width, height = ih.get_image_size(self.image_path)
+        return {'width' : width, 'height' : height}
+    
     def add_naxis_params(self):
         """
         Add NAXIS1 and NAXIS2 to the header.
         """
-        if 'IMAGEH' in self.header:
-            width, height = (self.header['IMAGEW'],self.header['IMAGEH'])
-        # size = ih.get_image_size(self.image_path)
-        self.header = wh.add_NAXES(header = self.header, width = width, height = height)
+        par = self._get_naxis_params()
+        self.header = wh.add_NAXES(header = self.header, **par)
+    
+    def header_from_avm(self, avm):
+        par = self._get_naxis_params()
+        header = avm.to_wcs().to_header()
+        
+        # check parity
+        if not wh.is_JPEGLike(parity = wh.get_parity(header = header)):
+            log('WTML requires JPEG-like parity (parity < 0, positive det(CD))', level = 'INFO')
+            header = wh.flip_parity(header, par['height'])
+        return header
 
 class ImageSet:
     
