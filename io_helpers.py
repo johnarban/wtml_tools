@@ -1,5 +1,7 @@
 import os
 from PIL import Image
+from io import BytesIO
+import requests
 from importlib import reload
 from glob import glob
 from astropy.io import fits
@@ -25,11 +27,27 @@ def _convertToSimpleJPEG(filename):
 
 def get_PIL_image(im):
     if isinstance(im, str):
+        if im.startswith("http"):
+            return get_PIL_image_from_url(im)
         with Image.open(im) as pil_im:
             im = pil_im
         return im
     elif isinstance(im, Image):
         return im
+
+def url_as_file(url):
+    """
+    Convert a URL to a filename
+    """
+    return BytesIO(requests.get(url).content)
+
+def get_PIL_image_from_url(url):
+    """
+    Get a PIL image from a URL
+    """
+    return Image.open(url_as_file(url))
+
+
 
 def get_image_size(image_path):
     """
@@ -37,10 +55,15 @@ def get_image_size(image_path):
     
     returns (height, width)
     """
+    # if it is a web file, return the size from the web
     if isinstance(image_path, str):
+        if image_path.startswith("http"):
+            im = get_PIL_image_from_url(image_path)
+            return im.size
         with Image.open(image_path) as im:
             width, height = im.size
         return width, height
+    
     elif isinstance(image_path, Image):
         return im.size
     elif isinstance(image_path, tuple):
@@ -135,3 +158,16 @@ def github_raw_path(github_id, repository, branch, path):
     path = os.path.join(f"{github_id}/{repository}/{branch}", path)
     return "https://raw.githubusercontent.com/" + path
 
+
+def convert_fits_to_jpg(filename):
+    """
+    reads in a fits file with 3 dimensions (color, x, y)
+    and saves it as a jpg file
+    """
+    im = fits.open(filename)
+    im = im[0].data
+    # reshape the image to be (x, y, color)
+    im = im.transpose(1, 2, 0)
+    im = Image.fromarray(im)
+    im.save(filename.replace(".fits", ".jpg"))
+    

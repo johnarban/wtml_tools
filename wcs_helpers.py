@@ -5,20 +5,24 @@ from astropy.wcs.utils import _is_cd_orthogonal
 from numpy import pi
 from logger import log, set_debug_level
 
-# The functions defined in the file are as follows:
-# - get_cd
-# - get_cd_sign
-# - header_to_wcs
-# - get_quadrant
-# - get_rot
-# - get_scale
-# - clean_header
-# - remove_sip
-# - add_NAXES
-# - remove_cd
-# - header_cd_to_cdelt_crota
 
+def ensure_wcs(supposed_wcs):
+    """Converts a header to a wcs object if it isn't already one."""
+    if isinstance(supposed_wcs, WCS):
+        return supposed_wcs
+    else:
+        return WCS(supposed_wcs)
 
+def ensure_header(supposed_header):
+    """Converts a wcs to a header if it isn't already one."""
+    if isinstance(supposed_header, Header):
+        return supposed_header
+    else:
+        return supposed_header.to_header()
+    
+def is_header_or_wcs(supposed_wcs_or_header):
+    """Returns True if the object is a header or a wcs object."""
+    return isinstance(supposed_wcs_or_header, Header) or isinstance(supposed_wcs_or_header, WCS)
 ## CD Matrix tools
 ## FITS originally used CDELT and CROTA to describe the scale and rotation
 ## Then it switched to using
@@ -30,14 +34,13 @@ def get_cd(header=None, wcs=None):
     This property derives from either wcs.wcs.cd or wcs.wcs.pc & wcs.wcs.cdelt.
     """
     # check if user was lazy and header is actually a wcs object
-    if isinstance(header, WCS):
-        wcs = header
-        header = None
+    if header is not None:
+        wcs = ensure_wcs(header)
+    elif wcs is not None:
+        wcs = ensure_wcs(wcs)
 
-    if wcs is not None:
-        return wcs.pixel_scale_matrix
-    else:
-        return WCS(header).pixel_scale_matrix
+    return wcs.pixel_scale_matrix
+
 
 
 def det_cd(cd_matrix):
@@ -59,18 +62,6 @@ def pretty_print_matrix(matrix, name=""):
     return str1 + "\n" + str2
 
 
-def get_parity(cd=None, header=None):
-    """Return the parity of the CD matrix."""
-    return -get_cd_sign(cd=cd, header=header)
-
-
-def is_JPEGLike(parity=None, cd_sign=None):
-    """Return True if the parity is negative."""
-    if cd_sign is not None:
-        return cd_sign > 0
-    return parity < 0
-
-
 def get_cd_sign(cd=None, header=None):
     """get's the cd_sign of the cd matrix
     FITS typically have positive cd_sign
@@ -78,13 +69,32 @@ def get_cd_sign(cd=None, header=None):
     See https://github.com/WorldWideTelescope/toasty/blob/master/toasty/builder.py#L290
     for a discussion on cd_sign
     """
-    if cd is None:
-        cd = get_cd(header)
+    if isinstance(cd, Header) or isinstance(cd, WCS) or ((cd is None) & is_header_or_wcs(header)):
+        log("Passed a header or wcs object to get_cd_sign, assuming it is a header",level='DEBUG')
+        cd = get_cd(header=cd)  # check if user was lazy and cd is actually a header
+    else:
+        log("Passed a cd matrix to get_cd_sign", level='DEBUG')
 
     if det_cd(cd) >= 0:
         return 1
     else:
         return -1
+
+
+def get_parity(cd=None, header=None):
+    """Return the parity of the CD matrix."""
+    return -get_cd_sign(cd=cd, header=header)
+
+
+def is_JPEGLike(parity=None, cd_sign=None):
+    """Return True if the parity is negative."""
+    if is_header_or_wcs(parity):
+        log('Passed a header or wcs object to is_JPEGLike, assuming it is a header', level='DEBUG')
+        parity = get_parity(header=parity)
+    if cd_sign is not None:
+        return cd_sign > 0
+    return parity < 0
+
 
 
 def flip_parity(header, height=None, inplace=False):
@@ -130,7 +140,7 @@ def flip_parity(header, height=None, inplace=False):
 
 def flip_parity2(header, width=None, inplace=False):
     """
-    Flip the parity of the FITS header
+    Flip the parity of the FITS header (north-south flip)
     This cannot be done with a header that has only
     scale and rotation matrix, it must have a CD or PC matrix.
     We flip the parity by flipping the 1_2 and 2_2 elements of
@@ -168,13 +178,6 @@ def flip_parity2(header, width=None, inplace=False):
     log(pretty_print_matrix(new_pixel_scale_matrix), level=0)
 
     return header
-
-def header_to_wcs(supposed_wcs):
-    """Converts a header to a wcs object if it isn't already one."""
-    if isinstance(supposed_wcs, WCS):
-        return supposed_wcs
-    else:
-        return WCS(supposed_wcs)
 
 
 def get_quadrant(x, y):
@@ -241,9 +244,9 @@ def get_scale(cd):
     return (cd**2).sum(axis=0) ** 0.5
 
 
-def get_scale_rot(header, force=False, wwt=False):
+def get_scale_rot(header, wwt=False):
     # from astrometry.net/net/wcs.py
-    wcs = header_to_wcs(header)
+    wcs = ensure_wcs(header)
     cd = get_cd(wcs=wcs)
 
     scales = get_scale(cd)  # in degrees / pixel
@@ -334,9 +337,9 @@ def blank_header():
     header['CRPIX2'] = naxis2 / 2 + 0.5
     header['CUNIT1'] = 'deg'
     header['CUNIT2'] = 'deg'
-    header['CD1_1'] = -0.0002777777777777778
+    header['CD1_1'] = -10/3600
     header['CD1_2'] = 0.0
     header['CD2_1'] = 0.0
-    header['CD2_2'] = 0.0002777777777777778
+    header['CD2_2'] = 10/3600
     return header
 

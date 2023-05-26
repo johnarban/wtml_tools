@@ -3,6 +3,7 @@ from importlib import reload
 from math import sqrt
 import json
 from pyavm import AVM
+from pyavm.exceptions import NoXMPPacketFound
 
 from astropy.io.fits import Header
 from astropy.wcs import WCS
@@ -10,6 +11,11 @@ from astropy.wcs import WCS
 import io_helpers as ih
 import wcs_helpers as wh
 
+try:
+    from anyascii import anyascii
+except:
+    from string import printable
+    anyascii = lambda s: ''.join(filter(lambda x: x in set(printable), s))
 reload(ih)
 reload(wh)
 
@@ -27,19 +33,25 @@ class ImageHeader:
         self.imagename = os.path.splitext(self.basename)[0]
         self.wcsfile = wcsfile
         self.header = None
+        self.credits = ''
+        self.description = ''
+        self.name = ''
 
         self.use_avm = use_avm
-        self.avm = ih.get_avm(image_path)
-        if use_avm and self.avm is not None:
+        self.avm = self.get_avm(image_path)
+        if use_avm and (self.avm is not None):
             self.header = self.header_from_avm(self.avm)
         else:
             use_avm = False
-
-            self.wcsfile = self._valid_wcs_file(self.wcsfile)
-            if self.wcsfile is not None:
-                self.wcs_header = Header.fromfile(self.wcsfile)
-                if not self.use_avm:
-                    self.header = self.wcs_header
+            
+            if isinstance(self.wcsfile, Header):
+                self.header = self.wcsfile
+            else:
+                self.wcsfile = self._valid_wcs_file(self.wcsfile)
+                if self.wcsfile is not None:
+                    self.wcs_header = Header.fromfile(self.wcsfile)
+                    if not self.use_avm:
+                        self.header = self.wcs_header
 
         if self.header is None:
             log(f"Could not find header for {self.image_path}", level="INFO")
@@ -54,6 +66,14 @@ class ImageHeader:
     
     def __repr__(self):
         return self.header.__repr__()
+    
+    def get_avm(self, filename):
+        try:
+            if filename.startswith("http"):
+                return None
+            return AVM.from_image(filename)
+        except NoXMPPacketFound:
+            return None
     
     def _valid_wcs_file(self, wcsfile):
         """
@@ -121,7 +141,17 @@ class ImageHeader:
         # check parity
         if not wh.is_JPEGLike(parity = wh.get_parity(header = header)):
             log('WTML requires JPEG-like parity (parity < 0, positive det(CD))', level = 'INFO')
+            log('Flipping parity', level = 'INFO')
             header = wh.flip_parity(header, par['height'])
+        
+        header['IMAGEW'] = par['width']
+        header['IMAGEH'] = par['height']
+        
+        if 'Description' in avm._items:
+            header['DESCRIPT'] = anyascii(avm._items['Description'])
+        if 'Credits' in avm._items:
+            header['CREDITS'] = avm._items['Credits']
+        
         return header
 
 class ImageSet:
@@ -146,7 +176,8 @@ class ImageSet:
                 FileType = ".jpg",
                 CenterY = 0,
                 CenterX = 0,
-                BottomsUp = False,
+                BottomsUp = None,
+                parity = None,
                 StockSet = False,
                 ElevationModel = False, 
                 OffsetX = 0,
@@ -187,6 +218,11 @@ class ImageSet:
         self.Rotation = Rotation
         
         self.BottomsUp = BottomsUp
+        if self.BottomsUp is None:
+            if parity is not None:
+                self.BottomsUp = parity > 0
+            else:
+                self.BottomsUp = False
         self.CenterY = CenterY
         self.CenterX = CenterX
         self.OffsetX = OffsetX

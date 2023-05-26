@@ -15,16 +15,19 @@ from astropy.io.fits import Header
 from astropy.wcs import WCS
 from PIL import Image
 
+from pyavm import AVM
 
 import wcs_helpers as wh
 import io_helpers as ih
 import avm_utils as au
 import helper_classes as hc
+import path_helpers as ph
 
 reload(wh)
 reload(ih)
 reload(au)
 reload(hc)
+reload(ph)
 import xml_indenter as xml
 reload(xml)
 
@@ -59,7 +62,9 @@ def header_to_wtml_params(header):
     return rot, crval, offset, scale, parity
 
 
-def get_wwt_url(name, rot, crval, offset, scale, bottoms_up, url, thumb_url):
+def format_wwt_url(name, rot, crval, offset, scale, bottoms_up, url, thumb_url=''):
+    if not isinstance(bottoms_up, bool):
+        bottoms_up = bottoms_up > 0
     base_url = "http://www.worldwidetelescope.org/wwtweb/ShowImage.aspx?"
     options = (
         bottoms_up, 3600 * scale,
@@ -72,15 +77,21 @@ def get_wwt_url(name, rot, crval, offset, scale, bottoms_up, url, thumb_url):
     wwt_url = template  % options
     return base_url + wwt_url
 
-def wwt_url_from_header(header, name, url = ".", thumb_url = "."):
-    rot, crval, offset, scale, cd, parity = header_to_wtml_params(header)
+def wwt_url_from_header(header, name, url = None, thumb_url = ""):
+    if url is None:
+        raise(ValueError("No URL provided"))
+    rot, crval, offset, scale, parity = header_to_wtml_params(header)
     bottoms_up = parity > 0
-    return get_wwt_url(name, rot, crval, offset, scale, bottoms_up, url)
+    return format_wwt_url(name, rot, crval, offset, scale, bottoms_up, url)
 
-def create_imageset_dict(name, rot, crval, offset, scale, height, width, url, parity):
+def create_imageset_dict(name, rot, crval, offset, scale, height, width, url, parity, thumb_url=""):
     log("\n WTML Place & Imageset values: \n", level=3)
     bottoms_up = parity > 0
-    full_string = f"Name: {name} Rotation: {rot:0.2f} Bottoms-up: {bottoms_up} Center_X: {crval[0]:0.2f} Center_Y: {crval[1]:0.2f} Offset_X: {offset[0]} Offset_Y: {offset[0]} Scale: {scale:0.3g} Height: {height} Width: {width} URL: {url}"
+    full_string = f"""Name: {name} Rotation: {rot:0.2f} Bottoms-up: {bottoms_up} 
+                      Center_X: {crval[0]:0.2f} Center_Y: {crval[1]:0.2f} 
+                      Offset_X: {offset[0]} Offset_Y: {offset[0]} 
+                      Scale: {scale:0.3g} 
+                      Height: {height} Width: {width} URL: {url}"""
     log(full_string, level=2)
     if "github" in url:
         # repository is the github repo in the url
@@ -108,8 +119,8 @@ def create_imageset_dict(name, rot, crval, offset, scale, height, width, url, pa
         imageset.set_base_degrees_per_tile(scale)
     else:
         imageset.set_base_degrees_per_tile(max(width, height) * scale)
-        
-    wwt_url = get_wwt_url(name, rot, crval, offset, scale, bottoms_up, url, "https://nova.astrometry.net/image/16942765")
+    thumb_url = thumb_url or "https://nova.astrometry.net/image/16942765"
+    wwt_url = format_wwt_url(name, rot, crval, offset, scale, bottoms_up, url, )
     
     log("WorldWide Telescope URL:", level=2)
     log(wwt_url, level=2)
@@ -184,7 +195,8 @@ def create_wtml(
     width, height = im.size
     if url is None:
         raise ValueError("I need a url")
-
+    
+    header = hc.ImageHeader(image_path, header).header
     rot, crval, offset, scale, parity = header_to_wtml_params(header)
 
     imageset = create_imageset_dict(
@@ -210,7 +222,7 @@ def create_wtml(
 
     el_thumbnail_url = ET.Element("ThumbnailUrl")
     el_thumbnail_url.text = (
-        thumbnail_url or "https://nova.astrometry.net/image/16942765"
+        thumbnail_url or image_path
     )
 
     el_imageset.append(el_description)
@@ -231,7 +243,7 @@ def create_wtml(
     tree = ET.ElementTree(el_folder)
     tree.write(out)
     xml.split_xml_attributes(out, field="ImageSet")
-    return tree, imageset
+    return tree, imageset, out
 
 # what do we want to specify when creatng a wtml file?
 # name: Place and ImageSet name
@@ -248,9 +260,19 @@ def create_wtml_from_image(
         name=None, 
         image_url=None,
         thumb_url=None,
-        suffix=""):
+        suffix="",
+        to_github=False,):
     """
     Create a WTML file from an image file.
+    image_path: path to image file
+    wcsfile: path to wcs file. If not provided it will look for a .wcs file with the same name as the image file
+    use_avm: if True, it will try to get the wcs from the AVM tags in the image file
+    wtml: name of the wtml file. If not provided it will use the name of the image file
+    output_dir: directory where the wtml file will be saved. If not provided it will use the directory of the image file
+    name: name of the Place and ImageSet. If not provided it will use the name of the image file
+    image_url: url where the wtml file can find the image. If not provided it will use the name of the image file
+    thumb_url: url where the wtml file can find the image thumbnail. If not provided it will use the name of the image_url
+    suffix: suffix to add to the name of the wtml file (and other outputs)
     """
     log(f"image_path: {image_path}", level="INFO")
     # Get the image
@@ -263,12 +285,15 @@ def create_wtml_from_image(
     image_header = hc.ImageHeader(image_path, wcsfile=wcsfile, use_avm=use_avm)
     header =image_header.header
     
+    # wtml: name of the wtml file
+    # wtml_dir: directory where the wtml file will be saved
     if wtml is None:
         wtml = os.path.basename(image_path).replace(f".{ext}", f"{suffix}.wtml")
         wtml_dir = os.path.dirname(image_path)
     else:
         wtml_dir = os.path.dirname(wtml)
         wtml = os.path.basename(wtml)
+    
     if output_dir is None:
         if wtml_dir == '':
             output_dir = os.path.dirname(image_path)
@@ -280,14 +305,16 @@ def create_wtml_from_image(
 
     if image_url is None:
         image_url = image_path.replace(f".{ext}", f"{suffix}.{ext}")
-    # else:
-    #     if ext != image_url[:-len(ext)]:
-    #         image_url = os.path.join(image_url, name + f"{suffix}.{ext}")
+
     log(f"WTML Image URL: {image_url}", level="INFO")
     
+    if to_github:
+        image_url = ph.to_github(os.path.basename(image_url), web=True)
+        
+    if thumb_url is None:
+        thumb_url = image_url
     
-    tree, imageset = create_wtml(header, image_path, name = name, out=os.path.join(output_dir,wtml), url=image_url, thumbnail_url=thumb_url)
     
-    return tree, imageset
-
-
+    tree, imageset, out = create_wtml(header, image_path, name = name, out=os.path.join(output_dir,wtml), url=image_url, thumbnail_url=thumb_url)
+    
+    return tree, imageset, out
