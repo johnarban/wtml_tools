@@ -187,6 +187,8 @@ def create_wtml(
     description="description",
     thumbnail_url=None,
     out=None,
+    zoom_factor = 1.7,
+    place_center = {},
 ):
     # print out header sayin "Creating WTML file"
     log("\n ****** Creating WTML file ****** \n", level="INFO")
@@ -208,8 +210,14 @@ def create_wtml(
 
     folder = set_folder(name)
     # in WWT zoom is the FOV * 6
-    zoom = int(6 * scale * max(height, width) * 1.7)  # 1.7 is a fudge factor
-    place = set_place(name=name, ra=crval[0] / 15, dec=crval[1], zoom=zoom)
+    fov = 6 * scale * max(height, width) #in WWT zoom units
+    zoom = fov * zoom_factor  # 1.7 is a fudge factor
+    # round to three significant digits
+    zoom = round(zoom, -int(np.floor(np.log10(abs(zoom)))) + 2)
+    place = set_place(name=name, 
+                      ra=place_center.get('ra', crval[0]) / 15, 
+                      dec=place_center.get('dec', crval[0]), 
+                      zoom=place_center.get('zoom', zoom))
 
     # log('Creating WTML file')
     el_imageset = ET.Element("ImageSet", attrib=imageset)
