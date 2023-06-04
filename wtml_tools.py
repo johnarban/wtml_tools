@@ -66,12 +66,15 @@ def format_wwt_url(name, rot, crval, offset, scale, bottoms_up, url, thumb_url='
     if not isinstance(bottoms_up, bool):
         bottoms_up = bottoms_up > 0
     base_url = "http://www.worldwidetelescope.org/wwtweb/ShowImage.aspx?"
+    url_rot = rot + 180
+    if url_rot > 180:
+        url_rot = -(360 - url_rot)
     options = (
         bottoms_up, 3600 * scale,
         name, url,
         crval[0], crval[1],
         offset[0], offset[1],
-        rot + 180, thumb_url,
+        url_rot, thumb_url,
     )
     template = "reverseparity=%s&scale=%.6f&name=%s&imageurl=%s&ra=%.6f&dec=%.6f&x=%.1f&y=%.1f&rotation=%.2f&thumb=%s"
     wwt_url = template  % options
