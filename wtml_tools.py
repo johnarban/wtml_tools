@@ -53,7 +53,7 @@ def header_to_wtml_params(header):
 
     wcs = WCS(header)
     crpix = [(header["NAXIS1"] + 1) / 2, (header["NAXIS2"] + 1) / 2]
-    crval = wcs.wcs_pix2world(*crpix, 1)
+    crval = wcs.wcs_pix2world(*crpix, 0)
     offset = crpix
     # cd = wh.get_cd(wcs)
     scales, rot, parity = wh.get_scale_rot(header)
