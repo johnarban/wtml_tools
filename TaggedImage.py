@@ -54,7 +54,7 @@ class TaggedImage:
         self._get_image_header()
         
         if self.avm is None:
-            log("No AVM deteected. Creating AVM from self.header", level='INFO')
+            logger.log("No AVM deteected. Creating AVM from self.header", level='INFO')
             self.avm = AVM.from_header(self.header)
         
         
@@ -66,17 +66,17 @@ class TaggedImage:
             return Header.fromfile(self.wcs_file)
         else:
             if os.path.splitext(self.image_file)[1] in FITS_EXTENSIONS:
-                log("Reading FITS header from image file", level=1)
+                logger.log("Reading FITS header from image file", level=1)
                 return Header.fromfile(self.image_file), None
             elif os.path.splitext(self.image_file)[1] in IMAGE_EXTENSIONS:
                 try:
-                    log("Reading AVM from image file", level=1)
+                    logger.log("Reading AVM from image file", level=1)
                     self.avm = AVM.from_file(self.image_file)
                     self._has_avm = True
                     self.header = self.avm.to_wcs().to_header()
                 except:
-                    log("Could not read AVM from image file", level=2)
-                    log("Returning blank header")
+                    logger.log("Could not read AVM from image file", level=2)
+                    logger.log("Returning blank header")
                     return blank_header(), None
     
     

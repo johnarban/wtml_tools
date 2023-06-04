@@ -3,7 +3,9 @@ from astropy.wcs import WCS
 from math import atan2, atan
 from astropy.wcs.utils import _is_cd_orthogonal
 from numpy import pi
-from logger import log, set_debug_level
+import logger as logger
+from importlib import reload
+reload(logger)
 
 
 def ensure_wcs(supposed_wcs):
@@ -69,11 +71,20 @@ def get_cd_sign(cd=None, header=None):
     See https://github.com/WorldWideTelescope/toasty/blob/master/toasty/builder.py#L290
     for a discussion on cd_sign
     """
-    if isinstance(cd, Header) or isinstance(cd, WCS) or ((cd is None) & is_header_or_wcs(header)):
-        log("Passed a header or wcs object to get_cd_sign, assuming it is a header",level='DEBUG')
-        cd = get_cd(header=cd)  # check if user was lazy and cd is actually a header
+    
+    if (cd is None) and (header is None):
+        raise ValueError("Must pass either a cd matrix or a header")
+    
+    if cd is None:
+        if is_header_or_wcs(header):
+            cd = get_cd(wcs=ensure_wcs(header))
     else:
-        log("Passed a cd matrix to get_cd_sign", level='DEBUG')
+        if is_header_or_wcs(cd):
+            logger.log(f"Passed {type(cd)} as cd matrix",level='DEBUG')
+            cd = get_cd(header=cd)
+        elif is_header_or_wcs(header):
+            cd = get_cd(header=header)
+    # else cd must be a numpy array
 
     if det_cd(cd) >= 0:
         return 1
@@ -89,7 +100,7 @@ def get_parity(cd=None, header=None):
 def is_JPEGLike(parity=None, cd_sign=None):
     """Return True if the parity is negative."""
     if is_header_or_wcs(parity):
-        log('Passed a header or wcs object to is_JPEGLike, assuming it is a header', level='DEBUG')
+        logger.log('Passed a header or wcs object to is_JPEGLike, assuming it is a header', level='DEBUG')
         parity = get_parity(header=parity)
     if cd_sign is not None:
         return cd_sign > 0
@@ -118,11 +129,11 @@ def flip_parity(header, height=None, inplace=False):
 
     header["CRPIX2"] = height + 1 - header["CRPIX2"]
     if "PC1_2" in header:
-        log("flipping PC")
+        logger.log("flipping PC", level="DEBUG")
         header["PC1_2"] *= -1
         header["PC2_2"] *= -1
     elif "CD1_2" in header:
-        log("flipping CD")
+        logger.log("flipping CD", level="DEBUG")
         header["CD1_2"] *= -1
         header["CD2_2"] *= -1
     else:
@@ -131,10 +142,10 @@ def flip_parity(header, height=None, inplace=False):
     new_pixel_scale_matrix = get_cd(header)
 
     # pretty print the matrices showing the change
-    log(f"Original CD matrix: cd_sign = {original_cd_sign}", level=1)
-    log(pretty_print_matrix(original_pixel_scale_matrix), level=0)
-    log(f"New CD matrix: cd_sign = {new_cd_sign}", level=1)
-    log(pretty_print_matrix(new_pixel_scale_matrix), level=0)
+    logger.log(f"Original CD matrix: cd_sign = {original_cd_sign}", level="INFO")
+    logger.log(pretty_print_matrix(original_pixel_scale_matrix), level="DEBUG")
+    logger.log(f"New CD matrix: cd_sign = {new_cd_sign}", level="INFO")
+    logger.log(pretty_print_matrix(new_pixel_scale_matrix), level="DEBUG")
 
     return header
 
@@ -159,11 +170,11 @@ def flip_parity2(header, width=None, inplace=False):
 
     header["CRPIX1"] = width + 1 - header["CRPIX1"]
     if "PC1_2" in header:
-        log("flipping PC")
+        logger.log("flipping PC", level="DEBUG")
         header["PC1_1"] *= -1
         header["PC2_1"] *= -1
     elif "CD1_2" in header:
-        log("flipping CD")
+        logger.log("flipping CD", level="DEBUG")
         header["CD1_1"] *= -1
         header["CD2_1"] *= -1
     else:
@@ -172,10 +183,10 @@ def flip_parity2(header, width=None, inplace=False):
     new_pixel_scale_matrix = get_cd(header)
 
     # pretty print the matrices showing the change
-    log(f"Original CD matrix: cd_sign = {original_cd_sign}", level=1)
-    log(pretty_print_matrix(original_pixel_scale_matrix), level=0)
-    log(f"New CD matrix: cd_sign = {new_cd_sign}", level=1)
-    log(pretty_print_matrix(new_pixel_scale_matrix), level=0)
+    logger.log(f"Original CD matrix: cd_sign = {original_cd_sign}", level="INFO")
+    logger.log(pretty_print_matrix(original_pixel_scale_matrix), level="DEBUG")
+    logger.log(f"New CD matrix: cd_sign = {new_cd_sign}", level="INFO")
+    logger.log(pretty_print_matrix(new_pixel_scale_matrix), level="DEBUG")
 
     return header
 
@@ -217,25 +228,25 @@ def get_rot_from_cd(cd, wwt=False):
 
     We use method 2 because it is what WWT uses.
     """
-    log("Finding the rotation angle")
+    logger.log("Finding the rotation angle", level="DEBUG")
     cd_sign = get_cd_sign(cd)
-    log(f"\tCD sign ={cd_sign}", level = 'DEBUG')
+    logger.log(f"\tCD sign ={cd_sign}", level = 'DEBUG')
     # wwt
     T = cd[1, 1]
     A = cd[0, 1]
     rot_wwt = atan2(-cd_sign * A, -T) * 180 / pi
-    log(f"\tRot (WWT) = {rot_wwt:0.3f} degrees", level = 'DEBUG')
+    logger.log(f"\tRot (WWT) = {rot_wwt:0.3f} degrees", level = 'DEBUG')
 
     # astrometry.net
     T = cd_sign * cd[0, 0] + cd[1, 1]
     A = cd_sign * cd[1, 0] - cd[0, 1]
     rot_astrom = -atan2(-cd_sign * A, -T) * 180 / pi
-    log(f"\tRot (Astrometry.net) = {rot_astrom:0.3f} degrees", level = 'DEBUG')
+    logger.log(f"\tRot (Astrometry.net) = {rot_astrom:0.3f} degrees", level = 'DEBUG')
     if wwt:
-        log(f"\tUsing WWT method. Angle :{rot_wwt:0.3f}", level='INFO')
+        logger.log(f"\tUsing WWT method. Angle :{rot_wwt:0.3f}", level='DEBUG')
         return rot_wwt
     else:
-        log(f"\tUsing Astrometry.net method. Angle :{rot_astrom:0.3f}", level='INFO')
+        logger.log(f"\tUsing Astrometry.net method. Angle :{rot_astrom:0.3f}", level='DEBUG')
         return rot_astrom
 
 
@@ -255,15 +266,15 @@ def get_scale_rot(header, wwt=False):
 
     parity = get_parity(cd)  # 1 or -1
 
-    log("get_scale_rot::")
-    log(f"\tscale: {scales}\n\trot: {rot:.3f}\n\tparity: {parity}", level=0)
+    logger.log("get_scale_rot::", level="DEBUG")
+    logger.log(f"\tscale: {scales}\n\trot: {rot:.3f}\n\tparity: {parity}", level="DEBUG")
 
     return scales, rot, parity
 
 
 def clean_header(header, inplace=False, verbose=False):
     """Remove all HISTORY and COMMENT cards from a header."""
-    log("cleaning header", level=0)
+    logger.log("cleaning header", level="DEBUG")
     if not inplace:
         header = header.copy()
     header.remove("HISTORY", remove_all=True, ignore_missing=True)
@@ -274,7 +285,7 @@ def clean_header(header, inplace=False, verbose=False):
 def remove_sip(header, inplace=False, verbose=False):
     """Remove all SIP related keywords from a header."""
     if verbose:
-        log("removing SIP", level=0)
+        logger.log("removing SIP", level="DEBUG")
     if not inplace:
         header = header.copy()
     header["CTYPE1"] = header["CTYPE1"].replace("-SIP", "")
@@ -294,20 +305,26 @@ def remove_sip(header, inplace=False, verbose=False):
 
 
 # fixup headers
-def add_NAXES(header, width = None, height = None, add_naxisi=True, inplace=False, verbose=False):
+def add_NAXES(header, width = None, height = None, inplace=False, verbose=False):
     """Add NAXIS and NAXIS1, NAXIS2 keywords to a header."""
-    log("adding NAXES", level=0)
+    logger.log("adding NAXES", level="DEBUG")
     if not inplace:
         header = header.copy()
     header["NAXIS"] = 2
-    if add_naxisi:
+    if width is not None:
         header["NAXIS1"] = width
+    elif 'IMAGEW' in header:
+        header["NAXIS1"] = header['IMAGEW']
+    if height is not None:
         header["NAXIS2"] = height
+    elif 'IMAGEH' in header:
+        header["NAXIS2"] = header['IMAGEH']
+    
     return header
 
 
 def remove_cd(header, verbose=False):
-    log("removing CD matrix", level=1)
+    logger.log("removing CD matrix", level="DEBUG")
     header = header.copy()
     if hasattr(WCS(header).wcs, "cd"):
         pre = "CD"

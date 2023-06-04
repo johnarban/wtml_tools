@@ -9,7 +9,8 @@ from pyavm import AVM
 from pyavm.exceptions import NoXMPPacketFound
 import wcs_helpers as wh
 reload(wh) 
-from logger import log, set_debug_level
+import logger as logger
+reload(logger)
 FITS_EXTENSIONS = [".fits", ".fit", ".fts", ".fz", ".fits.fz"]
 IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"]
 
@@ -83,16 +84,16 @@ def get_image_header(image_file, wcs_file = None):
     else:
         # check if the file is a FITS file
         if os.path.splitext(image_file)[1] in FITS_EXTENSIONS:
-            log("Reading FITS header from image file", level=1)
+            logger.log("Reading FITS header from input FITS file", level="INFO")
             return fits.Header.fromfile(image_file), None
         elif os.path.splitext(image_file)[1] in IMAGE_EXTENSIONS:
             try:
-                log("Reading AVM from image file", level=1)
+                logger.log("Reading AVM from image file", level="INFO")
                 avm = AVM.from_image(image_file)
                 return avm.to_wcs().to_header(), avm
             except:
-                log("Could not read AVM from image file", level=2)
-                log("Returning blank header")
+                logger.log("Could not read AVM from image file", level="ERROR")
+                logger.log("Returning blank header")
                 return wh.blank_header(), None
                 
 def get_avm(filename):
@@ -103,15 +104,15 @@ def get_avm(filename):
 
 def get_clean_header(wcsfile, remove_comments=True, remove_sip = True):
     if isinstance(wcsfile, str):
-        log(f"Reading header from file {wcsfile}", level='INFO')
+        logger.log(f"Reading header from file {wcsfile}", level='DEBUG')
     else:
         print(wcsfile)
     header = fits.Header.fromfile(wcsfile)
     if remove_comments:
-        log("Cleaning header", level='DEBUG')
+        logger.log("Cleaning header", level='DEBUG')
         header = wh.clean_header(header)
     if remove_sip:
-        log("Removing SIP", level='DEBUG')
+        logger.log("Removing SIP", level='DEBUG')
         header = wh.remove_sip(header)
     return header
 

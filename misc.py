@@ -25,7 +25,7 @@ def set_debug_level(level):
         DEBUG_LEVEL = level
 
 
-def log(arg: str, level=0):
+def logger.log(arg: str, level=0):
     # check if level is a string
     if isinstance(level, str):
         level = DEBUG_LEVELS[level]
@@ -80,13 +80,13 @@ def do_parity_inversion(header, im, force=False):
     # from https://github.com/WorldWideTelescope/wwt-aligner/blob/master/backend/wwt_aligner/driver.py#L449
     parity = wh.get_parity(header=header)
     if (parity < 0) and not force:
-        log(
+        logger.log(
             "Not inverting parity: WWT needs JPEGs to have negative parity",
             level="DEBUG",
         )
         # WWT requires images with negative parity
         return header
-    log("Inverting parity", level="INFO")
+    logger.log("Inverting parity", level="INFO")
     # wcs=WCS(header)
     # hdwork=wcs.to_header(relax=False)
     hdwork = wh.flip_parity(header, im.height)

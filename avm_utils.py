@@ -17,21 +17,8 @@ DEBUG_LEVEL = 1
 FITS_EXTENSIONS = [".fits", ".fit", ".fts", ".fz", ".fits.fz"]
 IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"]
 
-def set_debug_level(level):
-    if isinstance(level, str):
-        DEBUG_LEVEL = DEBUG_LEVELS[level]
-    else:
-        DEBUG_LEVEL = level
-
-
-def log(arg: str, level=0):
-    # check if level is a string
-    if isinstance(level, str):
-        level = DEBUG_LEVELS[level]
-
-    if level >= DEBUG_LEVEL:
-        print(arg)
-
+import logger as logger
+reload(logger)
 
 def make_avm_header(header):
     """
@@ -44,8 +31,8 @@ def make_avm_header(header):
     flip_parity = False
     if wh.is_JPEGLike(parity):
         flip_parity = True
-        log("This has JPEG-like parity", level=0)
-        log("flip parity for avm", level=1)
+        logger.log("This has JPEG-like parity", level=0)
+        logger.log("flip parity for avm", level=1)
         header = wh.flip_parity(header)
 
     scale, rot, parity = wh.get_scale_rot(header)
@@ -55,7 +42,7 @@ def make_avm_header(header):
     crota = rot
 
     if flip_parity:  # not wh.is_JPEGLike(parity):
-        log("Parity was flipped so, flipping cdelt2 (lat axis)", level=1)
+        logger.log("Parity was flipped so, flipping cdelt2 (lat axis)", level=1)
         cdelt2 = -cdelt2
         cdelt1 = cdelt1
         crota = crota
@@ -105,7 +92,7 @@ def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", r
     # ensure we have a PIL image
     # image = ih.get_PIL_image(image)
     
-    log(f"\n ****** Embedding AVM in {ext} file ****** \n", level='INFO')
+    logger.log(f"\n ****** Embedding AVM in {ext} file ****** \n", level='INFO')
     name = name + ih.get_suffix(suffix)
 
     save_image_path = os.path.join(path_out, name + "_tagged." + ext)
@@ -123,7 +110,7 @@ def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", r
     header = make_avm_header(header)
     avm = AVM.from_header(header)
     if remove_full_fits_header: avm.Spatial.FITSheader = ""
-    log(avm.Spatial, level='DEBUG')
+    logger.log(avm.Spatial, level='DEBUG')
     
     
     temp = "temp_can_delete." + ext 
@@ -132,7 +119,7 @@ def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", r
     avm.embed(temp, save_image_path)
     # os.remove(temp)
     
-    log(f"AVM tagged image saved to {save_image_path}", level='INFO')
+    logger.log(f"AVM tagged image saved to {save_image_path}", level='INFO')
 
     return save_image_path, avm
 
@@ -140,7 +127,7 @@ def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", r
 
 
 def add_avm_tags(image_path, wcsfile=None, name=None, path_out=".", suffix=""):
-    log(f"\n ****** Processing {image_path} ****** \n", level='INFO')
+    logger.log(f"\n ****** Processing {image_path} ****** \n", level='INFO')
     im = Image.open(image_path)
     ext = image_path.split(".")[-1]
     suffix = ih.get_suffix(suffix)
@@ -157,7 +144,7 @@ def add_avm_tags(image_path, wcsfile=None, name=None, path_out=".", suffix=""):
     header =image_header.header
     
     header = ih.get_clean_header(wcsfile)
-    header = wh.add_NAXES(header, *im.size, add_naxisi=True)
+    header = wh.add_NAXES(header, *im.size)
 
     out_tagged, avm = write_avm(im, header, name=name, suffix=suffix, path_out=path_out, ext=ext)
     return header, WCS(header), avm, out_tagged, im

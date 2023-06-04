@@ -10,6 +10,7 @@ from astropy.wcs import WCS
 
 import io_helpers as ih
 import wcs_helpers as wh
+import avm_utils as au
 
 try:
     from anyascii import anyascii
@@ -19,7 +20,8 @@ except:
 reload(ih)
 reload(wh)
 
-from logger import log, set_debug_level
+import logger as logger
+reload(logger)
 
 FITS_EXTENSIONS = [".fits", ".fit", ".fts", ".fz", ".fits.fz"]
 IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"]
@@ -54,15 +56,15 @@ class ImageHeader:
                         self.header = self.wcs_header
 
         if self.header is None:
-            log(f"Could not find header for {self.image_path}", level="INFO")
-            log("Creating blank header", level="INFO")
+            logger.log(f"Could not find header for {self.image_path}", level="ERROR")
+            logger.log("Creating blank header", level="ERROR")
             self.header = wh.blank_header()
         
         self.clean_header()
         self.add_naxis_params()
         
-        log(f"Image header for {self.image_path}:", level="DEBUG")
-        log("WCS file: " + str(self.wcsfile), level="DEBUG")
+        logger.log(f"Image header for {self.image_path}:", level="DEBUG")
+        logger.log("WCS file: " + str(self.wcsfile), level="DEBUG")
     
     def __repr__(self):
         return self.header.__repr__()
@@ -84,7 +86,7 @@ class ImageHeader:
         if wcsfile is None:
             wcsfile = ih.guess_wcs_filename(self.image_path)
             if wcsfile is None:
-                log(f"Could not find WCS file for {self.image_path}", level="INFO")
+                logger.log(f"Could not find WCS file for {self.image_path}", level="ERROR")
                 raise Exception(f"Could not find WCS file for {self.image_path}")
             else:
                 return wcsfile
@@ -102,12 +104,12 @@ class ImageHeader:
                 return wcsfile
 
             elif os.path.exists(os.path.join(self.dirname, wcs_basename)):
-                log(f"Found WCS file in image directory (not on {wcs_dirname})", "INFO")
+                logger.log(f"Found WCS file in image directory (not on {wcs_dirname})", "INFO")
                 return os.path.join(self.dirname, wcs_basename + ".wcs")
             else:
-                log(
+                logger.log(
                     f"Could not find WCS file {wcsfile} for {self.image_path}",
-                    level="INFO",
+                    level="ERROR",
                 )
                 raise Exception(
                     f"Could not find WCS file {wcsfile} for {self.image_path}"
@@ -137,11 +139,10 @@ class ImageHeader:
     def header_from_avm(self, avm):
         par = self._get_naxis_params()
         header = avm.to_wcs().to_header()
-        
         # check parity
         if not wh.is_JPEGLike(parity = wh.get_parity(header = header)):
-            log('WTML requires JPEG-like parity (parity < 0, positive det(CD))', level = 'INFO')
-            log('Flipping parity', level = 'INFO')
+            logger.log('WTML requires JPEG-like parity (parity < 0, positive det(CD))', level = 'ERROR')
+            logger.log('Flipping parity', level = 'ERROR')
             header = wh.flip_parity(header, par['height'])
         
         header['IMAGEW'] = par['width']
@@ -278,3 +279,9 @@ class ImageSet:
     
     def set_bottoms_up(self,bottoms_up):
         self.BottomsUp = bottoms_up
+        
+    def write_avm(self,path):
+        image_name = os.path.basename(path)
+        # rename image with _avm at the end
+        image_name = os.path.splitext(image_name)[0] + "_avm" + os.path.splitext(image_name)[1]
+        au.write_avm(image_name, self.header, suffix = "_avm", path = path)

@@ -31,30 +31,37 @@ reload(ph)
 import xml_indenter as xml
 reload(xml)
 
-from logger import log, set_debug_level
+import logger as logger
+reload(logger)
 FITS_EXTENSIONS = [".fits", ".fit", ".fts", ".fz", ".fits.fz"]
 IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"]
 
 
-def header_to_wtml_params(header):
+def header_to_wtml_params(header, for_url = False, nudge={'x':0, 'y':0}):
     header = header.copy()
     has_cd = "CD1_1" in header
     if has_cd:
-        log("\tHeader has CD matrix", level="DEBUG")
+        logger.log("\tHeader has CD matrix", level="DEBUG")
     has_crota = "CROTA2" in header
     if has_crota:
-        log("\tHeader has CROTA", level="DEBUG")
+        logger.log("\tHeader has CROTA", level="DEBUG")
     has_cdelt = "CDELT1" in header
     if has_cdelt:
-        log("\tHeader has CDELT", level="DEBUG")
+        logger.log("\tHeader has CDELT", level="DEBUG")
     has_pc = "PC1_1" in header
     if has_pc:
-        log("\tHeader has PC matrix", level="DEBUG")
+        logger.log("\tHeader has PC matrix", level="DEBUG")
 
     wcs = WCS(header)
     crpix = [(header["NAXIS1"] + 1) / 2, (header["NAXIS2"] + 1) / 2]
-    crval = wcs.wcs_pix2world(*crpix, 0)
-    offset = crpix
+    crval = wcs.wcs_pix2world(*crpix, 1)
+    if for_url:
+        print('for url')
+        offset = crpix[0] + nudge['x'], crpix[1] + nudge['y']
+    else:
+        offset = crpix[0] + nudge['x'], crpix[1] + nudge['y']
+    
+    
     # cd = wh.get_cd(wcs)
     scales, rot, parity = wh.get_scale_rot(header)
     scale = np.sqrt(np.abs(scales[0] * scales[1]))
@@ -66,9 +73,9 @@ def format_wwt_url(name, rot, crval, offset, scale, bottoms_up, url, thumb_url='
     if not isinstance(bottoms_up, bool):
         bottoms_up = bottoms_up > 0
     base_url = "http://www.worldwidetelescope.org/wwtweb/ShowImage.aspx?"
-    url_rot = rot + 180
-    if url_rot > 180:
-        url_rot = -(360 - url_rot)
+    url_rot = rot + 180 # https://wwt-api-client.readthedocs.io/en/latest/endpoints/legacy/show-image.html#endpoint-showimage
+    if url_rot > 360:
+        url_rot = url_rot - 360
     options = (
         bottoms_up, 3600 * scale,
         name, url,
@@ -76,36 +83,49 @@ def format_wwt_url(name, rot, crval, offset, scale, bottoms_up, url, thumb_url='
         offset[0], offset[1],
         url_rot, thumb_url,
     )
+    logger.log('\n ****** Creating WTML URL ****** \n', level="INFO")
+    logger.log(f"\tBottoms-up: {bottoms_up}", level="STATS")
+    logger.log(f"\tScale: {3600 * scale} arcsec", level="STATS")
+    logger.log(f"\tName: {name}", level="STATS")
+    logger.log(f"\tURL: {url}", level="STATS")
+    logger.log(f"\tRA: {crval[0]}", level="STATS")
+    logger.log(f"\tDec: {crval[1]}", level="STATS")
+    logger.log(f"\tX: {offset[0]}", level="STATS")
+    logger.log(f"\tY: {offset[1]}", level="STATS")
+    logger.log(f"\tRotation: {url_rot}", level="STATS")
     template = "reverseparity=%s&scale=%.6f&name=%s&imageurl=%s&ra=%.6f&dec=%.6f&x=%.1f&y=%.1f&rotation=%.2f&thumb=%s"
     wwt_url = template  % options
+    logger.log(f"\nWorldWide Telescope URL:\n\t {wwt_url}\n", level="INFO")
     return base_url + wwt_url
 
-def wwt_url_from_header(header, name, url = None, thumb_url = ""):
+def wwt_url_from_header(header, name, url = None, thumb_url = "", nudge = {'x':0, 'y':0}):
     if url is None:
         raise(ValueError("No URL provided"))
-    rot, crval, offset, scale, parity = header_to_wtml_params(header)
+    rot, crval, offset, scale, parity = header_to_wtml_params(header, for_url=True, nudge = nudge)
     bottoms_up = parity > 0
     return format_wwt_url(name, rot, crval, offset, scale, bottoms_up, url)
 
 def create_imageset_dict(name, rot, crval, offset, scale, height, width, url, parity, thumb_url=""):
-    log("\n WTML Place & Imageset values: \n", level=3)
+    logger.log("\n WTML Place & Imageset values: \n", level="STATS")
     bottoms_up = parity > 0
-    full_string = f"""Name: {name} Rotation: {rot:0.2f} Bottoms-up: {bottoms_up} 
-                      Center_X: {crval[0]:0.2f} Center_Y: {crval[1]:0.2f} 
-                      Offset_X: {offset[0]} Offset_Y: {offset[0]} 
-                      Scale: {scale:0.3g} 
-                      Height: {height} Width: {width} URL: {url}"""
-    log(full_string, level=2)
+    full_string = f"""Name: {name} 
+                      Rotation: {rot:0.2f}
+                      Bottoms-up: {bottoms_up} 
+                      Center_X: {crval[0]:0.7f} Center_Y: {crval[1]:0.7f} 
+                      Offset_X: {offset[0]} Offset_Y: {offset[1]} 
+                      Scale: {scale:0.3g} Height: {height} Width: {width} 
+                      URL: {url}"""
+    logger.log(full_string, level="STATS")
     if "github" in url:
         # repository is the github repo in the url
         repository = "/".join(url.split("/")[3:5])
-        log(f"  repository @{repository}")
+        logger.log(f"  repository @{repository}", level="DEBUG")
         directory = "/".join(url.split("/")[4:-1])
-        log(f"  directory: {directory}/")
+        logger.log(f"  directory: {directory}/", level="DEBUG")
     file = url.split("/")[-1]
-    log(f"\timage: {file}")
+    logger.log(f"\timage: {file}", level="DEBUG")
 
-    log(f"\turl: {url}\n")
+    logger.log(f"\turl: {url}\n", level="DEBUG")
     
     imageset = hc.ImageSet(
         Name = name,
@@ -123,11 +143,6 @@ def create_imageset_dict(name, rot, crval, offset, scale, height, width, url, pa
     else:
         imageset.set_base_degrees_per_tile(max(width, height) * scale)
     thumb_url = thumb_url or "https://nova.astrometry.net/image/16942765"
-    wwt_url = format_wwt_url(name, rot, crval, offset, scale, bottoms_up, url, )
-    
-    log("WorldWide Telescope URL:", level=2)
-    log(wwt_url, level=2)
-    log("\n", level=3)
 
     return imageset.json()
 
@@ -189,12 +204,13 @@ def create_wtml(
     out=None,
     zoom_factor = 1.7,
     place_center = {},
+    nudge = {'x':0, 'y':0},
 ):
     # print out header sayin "Creating WTML file"
-    log("\n ****** Creating WTML file ****** \n", level="INFO")
+    logger.log("\n ****** Creating WTML file ****** \n", level="INFO")
     if out is None:
         out = name + ".wtml"
-    log(f"WTML file: {out}", level="INFO")
+    logger.log(f"WTML file: {out}", level="INFO")
     
     im = ih.get_PIL_image(image_path)
     width, height = im.size
@@ -202,12 +218,14 @@ def create_wtml(
         raise ValueError("I need a url")
     
     header = hc.ImageHeader(image_path, header).header
-    rot, crval, offset, scale, parity = header_to_wtml_params(header)
+    rot, crval, offset, scale, parity = header_to_wtml_params(header, nudge=nudge)
 
     imageset = create_imageset_dict(
         name, rot, crval, offset, scale, height, width, url, parity
     )
-
+    
+    wwt_url = wwt_url_from_header(header, name, url, thumb_url=thumbnail_url or image_path, nudge=nudge)
+    
     folder = set_folder(name)
     # in WWT zoom is the FOV * 6
     fov = 6 * scale * max(height, width) #in WWT zoom units
@@ -219,7 +237,7 @@ def create_wtml(
                       dec=place_center.get('dec', crval[0]), 
                       zoom=place_center.get('zoom', zoom))
 
-    # log('Creating WTML file')
+    # logger.log('Creating WTML file')
     el_imageset = ET.Element("ImageSet", attrib=imageset)
 
     el_credits = ET.Element("Credits")
@@ -272,7 +290,10 @@ def create_wtml_from_image(
         image_url=None,
         thumb_url=None,
         suffix="",
-        to_github=False,):
+        to_github=False,
+        write_avm=False,
+        zoom_factor = 1.7,
+        nudge={'x':0, 'y':0},):
     """
     Create a WTML file from an image file.
     image_path: path to image file
@@ -285,7 +306,7 @@ def create_wtml_from_image(
     thumb_url: url where the wtml file can find the image thumbnail. If not provided it will use the name of the image_url
     suffix: suffix to add to the name of the wtml file (and other outputs)
     """
-    log(f"image_path: {image_path}", level="INFO")
+    logger.log(f"image_path: {image_path}", level="INFO")
     # Get the image
     ext = os.path.splitext(image_path)[1][1:]
     suffix = ih.get_suffix(suffix)
@@ -311,13 +332,13 @@ def create_wtml_from_image(
         else:
             output_dir = wtml_dir
     
-    log(f"output_dir: {os.path.join(output_dir, wtml)}", level="INFO")
+    logger.log(f"output_dir: {os.path.join(output_dir, wtml)}", level="INFO")
     
 
     if image_url is None:
         image_url = image_path.replace(f".{ext}", f"{suffix}.{ext}")
 
-    log(f"WTML Image URL: {image_url}", level="INFO")
+    logger.log(f"WTML Image URL: {image_url}", level="INFO")
     
     if to_github:
         image_url = ph.to_github(os.path.basename(image_url), web=True)
@@ -325,7 +346,10 @@ def create_wtml_from_image(
     if thumb_url is None:
         thumb_url = image_url
     
+    if write_avm:
+        logger.log(f"Writing AVM to {image_path}", level="INFO")
+        image_header.write_avm(output_dir)
     
-    tree, imageset, out = create_wtml(header, image_path, name = name, out=os.path.join(output_dir,wtml), url=image_url, thumbnail_url=thumb_url)
+    tree, imageset, out = create_wtml(header, image_path, name = name, out=os.path.join(output_dir,wtml), url=image_url, thumbnail_url=thumb_url, zoom_factor=zoom_factor, nudge=nudge)
     
-    return tree, imageset, out
+    return tree, imageset, out, image_header

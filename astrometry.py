@@ -6,6 +6,17 @@ import json
 from PIL import Image
 
 
+def get_anet_session(api_key, anet = None, subid = None, jobid = None):
+    new_anet = Astrometry(api_key)
+    if anet is not None:
+        new_anet.subid = anet.subid
+        new_anet._jobid = anet._jobid
+    else:
+        if subid is not None:
+            new_anet.subid = subid
+        if jobid is not None:
+            new_anet._jobid = jobid
+    return new_anet
 
 class Astrometry:
     api_key = None
@@ -26,11 +37,13 @@ class Astrometry:
     _user_id = None
     _post_data = None
     _post_response = None
+    _user_image = None
+    _user_image_url = None
+    _header = None
     
     def __init__(self, api_key=None):
         if api_key is not None:
             self.api_key = api_key
-        print(self.api_key)
         if self.api_key is None:
             raise ValueError("API key not set. Call with api_key=...")
         
@@ -54,6 +67,8 @@ class Astrometry:
                 "scale_units": scale_units, 
                 "scale_lower": scale_lower,
                 "scale_upper": scale_upper,
+                "crpix_center": True,
+                "tweak_order": 1,
         }
         
         self.image_url = url
@@ -69,7 +84,7 @@ class Astrometry:
         R = requests.post(upload_url, data={'request-json': json.dumps(message)})
         self._post_response = R
         if R.status_code != 200:
-            raise ValueError('Something went wrong with the upload. Status code: {} {}'.format(R.status_code))
+            raise ValueError('Something went wrong with the upload. Status code: {} {}'.format(R.status_code, R.text))
         
         self.subid = R.json()['subid']
         print(self.status_url)
@@ -85,8 +100,17 @@ class Astrometry:
             print('\t{}: {}'.format(key, value))
         if value is not None:
             # runs a loop until it has a job id
-            self.jobid
-            print(self.jobid)
+            if self.jobid is None:
+                print('Waiting for jobid...(checks remaining: {} x 3sec)'.format(self.jobid_check_threshold))
+            
+            while (self.jobid is None) & (self.jobid_check_threshold >= 0):
+                self.jobid_check_threshold -= 1
+                sleep(3)
+                
+            if self.jobid_check_threshold <= 0:
+                print('taking too long to get jobid')
+                return
+                
             while self.job_status is None:
                 self.jobid
                 sleep(1)
@@ -133,23 +157,19 @@ class Astrometry:
     def results_url(self):
         if self.subid is not None:
             if self._results_url is None:
-                self._results_url = 'https://nova.astrometry.net/user_images/{}'.format(self.subid)
+                self._results_url = 'https://nova.astrometry.net/user_images/{}'.format(self.user_image)
         return self._results_url
     
     @property
     def jobid(self):
         """caution this is recursive"""
         if self._jobid is None:
-            if self.empty_list(self.submission_status['jobs']):
-                pass
+            sub = self.submission_status['jobs']
+            if self.empty_list(sub):
+                return None
             else:
-                self._jobid = self.submission_status['jobs'][0]
+                self._jobid =sub[0]
                 return self._jobid
-            sleep(1) 
-            if self.jobid_check_threshold > 0:
-                print('waiting for jobid...')
-                self.jobid_check_threshold -= 1
-                return self.jobid
 
         return self._jobid
     
@@ -159,7 +179,7 @@ class Astrometry:
     
     @property
     def job_status(self):
-        if self._jobid is not None:
+        if self.jobid is not None:
             endoint = "http://nova.astrometry.net/api/jobs/{}"
             R = requests.get(endoint.format(self.jobid))
             return R.json()['status']
@@ -183,7 +203,7 @@ class Astrometry:
     
     
     def get_results(self):
-        if self._jobid is not None:
+        if self.jobid is not None:
             endoint = "http://nova.astrometry.net/api/jobs/{}/info"
             R = requests.get(endoint.format(self.jobid))
             return R.json()
@@ -205,7 +225,11 @@ class Astrometry:
     @property
     def header(self):
         if self.job_status is not None:
-            return fits.Header.fromstring(self._wcs_file().text)
+            if self._header is None:
+                self._header = fits.Header.fromstring(self._wcs_file().text)
+                return self._header
+            else:
+                return self._header
             
 
     def _new_fits_file(self):
@@ -241,7 +265,7 @@ class Astrometry:
             return self.image_url.split('/')[-1]
         else:
             if self.subid is not None:
-                if self._jobid is None:
+                if self.jobid is None:
                     self.jobid
                 result = self.get_results()
                 if result is not None:
@@ -253,3 +277,12 @@ class Astrometry:
             self._original_filename = self.get_original_file_name()
         return self._original_filename
     
+    @property
+    def user_image(self):
+        if self._user_image is None:
+            user_image = self.submission_status['user_images']
+            if (user_image is not None) and (len(user_image) > 0):
+                self._user_image = user_image[0]
+                user_image_url = "https://nova.astrometry.net/user_images/{}"
+                self._user_image_url = user_image_url.format(self._user_image)
+        return self._user_image

@@ -1,5 +1,5 @@
-DEBUG_LEVELS = {"DEBUG": 0, "INFO": 1}
-DEBUG_LEVEL = 0
+DEBUG_LEVELS = {"DEBUG": 0, "STATS":1, "INFO": 2, "ERROR":3}
+DEBUG_LEVEL = 3
 
 
 def set_debug_level(level):
