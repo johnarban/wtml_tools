@@ -66,25 +66,25 @@ def header_to_wtml_params(header, for_url = False, nudge={'x':0, 'y':0}):
     scales, rot, parity = wh.get_scale_rot(header)
     scale = np.sqrt(np.abs(scales[0] * scales[1]))
 
-    return rot, crval, offset, scale, parity
+    return {'rot':rot, 'crval':crval, 'offset':offset, 'scale':scale, 'parity':parity}
 
 
-def format_wwt_url(name, rot, crval, offset, scale, bottoms_up, url, thumb_url=''):
-    if not isinstance(bottoms_up, bool):
-        bottoms_up = bottoms_up > 0
+def format_wwt_url(name, rot = None, crval = None, offset = None, scale = None, reverse_parity = None, url = '', thumb_url='', **kwargs):
+    if not isinstance(reverse_parity, bool):
+        reverse_parity = reverse_parity > 0
     base_url = "http://www.worldwidetelescope.org/wwtweb/ShowImage.aspx?"
     url_rot = rot + 180 # https://wwt-api-client.readthedocs.io/en/latest/endpoints/legacy/show-image.html#endpoint-showimage
     if url_rot > 360:
         url_rot = url_rot - 360
     options = (
-        bottoms_up, 3600 * scale,
+        reverse_parity, 3600 * scale,
         name, url,
         crval[0], crval[1],
         offset[0], offset[1],
         url_rot, thumb_url,
     )
     logger.log('\n ****** Creating WTML URL ****** \n', level="INFO")
-    logger.log(f"\tBottoms-up: {bottoms_up}", level="STATS")
+    logger.log(f"\tReverse Parity: {reverse_parity}", level="STATS")
     logger.log(f"\tScale: {3600 * scale} arcsec", level="STATS")
     logger.log(f"\tName: {name}", level="STATS")
     logger.log(f"\tURL: {url}", level="STATS")
@@ -101,11 +101,11 @@ def format_wwt_url(name, rot, crval, offset, scale, bottoms_up, url, thumb_url='
 def wwt_url_from_header(header, name, url = None, thumb_url = "", nudge = {'x':0, 'y':0}):
     if url is None:
         raise(ValueError("No URL provided"))
-    rot, crval, offset, scale, parity = header_to_wtml_params(header, for_url=True, nudge = nudge)
-    bottoms_up = parity > 0
-    return format_wwt_url(name, rot, crval, offset, scale, bottoms_up, url)
+    wtml_params = header_to_wtml_params(header, for_url=True, nudge = nudge)
+    reverse_parity = wtml_params['parity'] > 0
+    return format_wwt_url(name, **wtml_params, reverse_parity = reverse_parity, url = url)
 
-def create_imageset_dict(name, rot, crval, offset, scale, height, width, url, parity, thumb_url=""):
+def create_imageset_dict(name = '', rot = None, crval = None, offset = None, scale = None, height = None, width = None, url = None, parity = None, thumb_url=""):
     logger.log("\n WTML Place & Imageset values: \n", level="STATS")
     bottoms_up = parity > 0
     full_string = f"""Name: {name} 
@@ -218,23 +218,20 @@ def create_wtml(
         raise ValueError("I need a url")
     
     header = hc.ImageHeader(image_path, header).header
-    rot, crval, offset, scale, parity = header_to_wtml_params(header, nudge=nudge)
+    wtml_params = header_to_wtml_params(header, nudge=nudge)
 
-    imageset = create_imageset_dict(
-        name, rot, crval, offset, scale, height, width, url, parity
-    )
-    
+    imageset = create_imageset_dict(name, **wtml_params, height = height, width = width, url = url)
     wwt_url = wwt_url_from_header(header, name, url, thumb_url=thumbnail_url or image_path, nudge=nudge)
     
     folder = set_folder(name)
     # in WWT zoom is the FOV * 6
-    fov = 6 * scale * max(height, width) #in WWT zoom units
+    fov = 6 * wtml_params['scale'] * max(height, width) #in WWT zoom units
     zoom = fov * zoom_factor  # 1.7 is a fudge factor
     # round to three significant digits
     zoom = round(zoom, -int(np.floor(np.log10(abs(zoom)))) + 2)
     place = set_place(name=name, 
-                      ra=place_center.get('ra', crval[0]) / 15, 
-                      dec=place_center.get('dec', crval[0]), 
+                      ra=place_center.get('ra', wtml_params['crval'][0]) / 15, 
+                      dec=place_center.get('dec', wtml_params['crval'][1]), 
                       zoom=place_center.get('zoom', zoom))
 
     # logger.log('Creating WTML file')
@@ -293,7 +290,8 @@ def create_wtml_from_image(
         to_github=False,
         write_avm=False,
         zoom_factor = 1.7,
-        nudge={'x':0, 'y':0},):
+        nudge={'x':0, 'y':0},
+        place_center= {}):
     """
     Create a WTML file from an image file.
     image_path: path to image file
@@ -350,6 +348,6 @@ def create_wtml_from_image(
         logger.log(f"Writing AVM to {image_path}", level="INFO")
         image_header.write_avm(output_dir)
     
-    tree, imageset, out = create_wtml(header, image_path, name = name, out=os.path.join(output_dir,wtml), url=image_url, thumbnail_url=thumb_url, zoom_factor=zoom_factor, nudge=nudge)
+    tree, imageset, out = create_wtml(header, image_path, name = name, out=os.path.join(output_dir,wtml), url=image_url, thumbnail_url=thumb_url, zoom_factor=zoom_factor, nudge=nudge, place_center=place_center)
     
     return tree, imageset, out, image_header

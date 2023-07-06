@@ -56,7 +56,7 @@ class Astrometry:
         self.session = R.json()['session']
         self.login_session = R
     
-    def submit(self, url,  center_ra = None, center_dec = None, radius = None, scale_units = 'degwidth', scale_lower = 0.1, scale_upper = 2, block_till_done = False):
+    def submit(self, url,  center_ra = None, center_dec = None, radius = None, scale_units = 'degwidth', scale_lower = 0.1, scale_upper = 20, block_till_done = False):
         upload_url = 'http://nova.astrometry.net/api/url_upload'
 
         message = {"session": self.session,
@@ -286,3 +286,13 @@ class Astrometry:
                 user_image_url = "https://nova.astrometry.net/user_images/{}"
                 self._user_image_url = user_image_url.format(self._user_image)
         return self._user_image
+    
+    @property
+    def user_image_url(self):
+        if self._user_image_url is None:
+            user_image = self.submission_status['user_images']
+            if (user_image is not None) and (len(user_image) > 0):
+                self._user_image = user_image[0]
+                user_image_url = "https://nova.astrometry.net/user_images/{}"
+                self._user_image_url = user_image_url.format(self._user_image)
+        return self._user_image_url

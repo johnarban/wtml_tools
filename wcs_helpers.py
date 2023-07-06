@@ -220,7 +220,7 @@ def get_rot_from_cd(cd, wwt=False):
       T = cd_sign * cd[0,0] + cd[1,1]
       A = cd_sign * cd[1,0] - cd[0,1]
       rot = -arctan2( A, T) * 180 / pi
-
+ 
     === Method 2 === (@wwt_data_formats/wwt_data_formats/imageset.py#L479)
         T =  cd[1,1]
         A = cd[0,1]
