@@ -85,8 +85,8 @@ def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", r
         defaul output is ./image_tagged.jpg
     """
     
-    if isinstance(image, str):
-        ext = image.split(".")[-1]
+    # if isinstance(image, str):
+    #     ext = image.split(".")[-1]
     
     if isinstance(image, str) & (name == "image"):
         name = os.path.basename(image).split(".")[0]
@@ -110,11 +110,11 @@ def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", r
 
     # make_avm_header puts scale, rot in header, removes cd matrix
     # and applies parity flip if needed
-    # header = make_avm_header(header)
+    header = make_avm_header(header)
     logger.log(header.__repr__(),level="DEBUG")
     avm = AVM.from_header(header)
     if remove_full_fits_header: avm.Spatial.FITSheader = ""
-    avm.Spatial.Rotation = avm.Spatial.Rotation - 180
+    # avm.Spatial.Rotation = avm.Spatial.Rotation - 180
     logger.log(avm.Spatial, level='DEBUG')
     
     

@@ -68,12 +68,7 @@ class ImageHeader:
         self.clean_header()
         self.normalize_header()
         
-        logger.log(f"Image header for {self.image_path}:", level="DEBUG")
-        logger.log(self.header.__repr__(), level="DEBUG")
         
-        logger.log(f"Image header for {self.image_path}:", level="DEBUG")
-        logger.log("WCS file: " + str(self.wcsfile), level="DEBUG")
-    
     def __repr__(self):
         return self.header.__repr__()
     
