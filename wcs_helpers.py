@@ -6,7 +6,7 @@ from numpy import pi
 import logger as logger
 from importlib import reload
 reload(logger)
-
+import numpy as np
 
 def ensure_wcs(supposed_wcs):
     """Converts a header to a wcs object if it isn't already one."""
@@ -73,10 +73,28 @@ def add_cd_matrix(header):
     
     for key, value in matrix_keys.items():
         header[key] = cd_matrix[value]
+    # remove CDELT and CROTA
+    # header.remove('CDELT1', ignore_missing=True)
+    # header.remove('CDELT2', ignore_missing=True)
+    # header.remove('CROTA2', ignore_missing=True)
     
     return header
+
+def replace_cd_matrix(header, cd_matrix):
+    """
+    replace cd matrix in header with cd_matrix
+    """
+    # check if keys starting with CD exist
+    matrix_keys = {
+                'CD1_1':(0,0),
+                'CD1_2':(0,1),
+                'CD2_1':(1,0),
+                'CD2_2':(1,1)
+                 }
+    for key, value in matrix_keys.items():
+        header[key] = cd_matrix[value]
     
-    
+    return header
 
 def pretty_print_matrix(matrix, name=""):
     """Prints a matrix in a pretty way."""
@@ -111,6 +129,7 @@ def get_cd_sign(cd=None, header=None):
         return 1
     else:
         return -1
+
 
 
 def get_parity(cd=None, header=None):
@@ -301,6 +320,35 @@ def clean_header(header, inplace=False, verbose=False):
     header.remove("HISTORY", remove_all=True, ignore_missing=True)
     header.remove("COMMENT", remove_all=True, ignore_missing=True)
     return WCS(header).to_header()
+
+def rotation_matrix(angle, radians=False):
+    angle = np.radians(angle) if not radians else angle
+    return np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
+
+def rotate_cd_matrix(header, angle = 90, ccw = True):
+    # rotate CD matrix by 90 degrees (counter-clock-wise)
+    logger.log(f"Rotating CD Matrix by {angle} degrees", level='INFO')
+    
+    hdr = header.copy()
+
+    cd_matrix = get_cd(header)
+    if ccw:
+        cd_matrix = rotation_matrix(angle) @ cd_matrix
+    else:
+        cd_matrix = rotation_matrix(-angle) @ cd_matrix
+    
+    
+    hdr = replace_cd_matrix(hdr, cd_matrix)
+    
+    # swap CRPIX1 and CRPIX2
+    logger.log("\talso swapping CRPIX1 and CRPIX2", level='INFO')
+    hdr['CRPIX1'], hdr['CRPIX2'] = header['CRPIX2'], header['CRPIX1']
+    
+    
+    return hdr
+
+        
+    
 
 
 def remove_sip(header, inplace=False, verbose=False):

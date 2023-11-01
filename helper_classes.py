@@ -29,7 +29,7 @@ IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"]
 
 
 class ImageHeader:
-    def __init__(self, image_path, wcsfile=None, use_avm=False):
+    def __init__(self, image_path, wcsfile=None, use_avm=False, rotate_cd_matrix = 0):
         self.image_path = image_path
         self.basename = os.path.basename(image_path)
         self.dirname = os.path.dirname(image_path)
@@ -39,11 +39,15 @@ class ImageHeader:
         self.credits = ''
         self.description = ''
         self.name = ''
+        self.rotate_cd_matrix_by = rotate_cd_matrix
 
         self.use_avm = use_avm
         self.avm = self.get_avm(image_path)
         if use_avm and (self.avm is not None):
             self.header = self.header_from_avm(self.avm)
+            if self.rotate_cd_matrix_by != 0:
+                self.header = wh.rotate_cd_matrix(self.header, self.rotate_cd_matrix_by)
+            self.check_flip_parity()
         else:
             use_avm = False
             
@@ -62,7 +66,10 @@ class ImageHeader:
             self.header = wh.blank_header()
         
         self.clean_header()
-        self.add_naxis_params()
+        self.normalize_header()
+        
+        logger.log(f"Image header for {self.image_path}:", level="DEBUG")
+        logger.log(self.header.__repr__(), level="DEBUG")
         
         logger.log(f"Image header for {self.image_path}:", level="DEBUG")
         logger.log("WCS file: " + str(self.wcsfile), level="DEBUG")
@@ -123,18 +130,28 @@ class ImageHeader:
         self.header = wh.clean_header(self.header)
         self.header = wh.remove_sip(self.header)
     
-    
-    def add_cd_matrix(self):
-        """
-        add CD matrix to header if one does not exist
-        """
-        cd_matrix = wh.get_cd(header = self.header)
-        print(cd_matrix)
-        if not any([key.startswith('CD') for key in self.header.keys()]):
-            self.header['CD1_1'] = cd_matrix[0,0]
-            self.header['CD1_2'] = cd_matrix[0,1]
-            self.header['CD2_1'] = cd_matrix[1,0]
-            self.header['CD2_2'] = cd_matrix[1,1]
+    def normalize_header(self):
+        header = WCS(self.header).to_header()
+        
+        header = wh.add_cd_matrix(header)
+
+        par = self._get_naxis_params()
+        header = wh.add_NAXES(header, **par)
+        
+        self.header = header
+        
+        
+    def check_flip_parity(self):
+        par = self._get_naxis_params()
+
+        header = wh.add_cd_matrix(self.header)
+        
+        # check parity
+        if not wh.is_JPEGLike(parity = wh.get_parity(header = header)):
+            logger.log('WTML requires JPEG-like parity (parity < 0, positive det(CD))', level = 'ERROR')
+            logger.log('Flipping parity', level = 'ERROR')
+            self.header = wh.flip_parity(header, par['height'])
+
     
     def _get_naxis_params(self):
         if (self.header is not None) and ('IMAGEH' in self.header):
@@ -150,26 +167,24 @@ class ImageHeader:
         par = self._get_naxis_params()
         self.header = wh.add_NAXES(header = self.header, **par)
     
+    @property 
+    def rotated_ccd_header(self):
+        return self.header
+        
+    
     def header_from_avm(self, avm):
         par = self._get_naxis_params()
         if not hasattr(avm, 'Spatial'):
             return None
         
-        if ('FITSheader' in avm.Spatial._items) and (avm.Spatial.FITSheader is not None):
-            logger.log('Using FITS header from AVM', level = 'INFO')
-            fitsHeader = avm.Spatial.FITSheader
-            logger.log(fitsHeader, level = 'DEBUG')
-            if fitsHeader is not None:
-                header = Header.fromstring(fitsHeader)
-        else:
-            header = avm.to_wcs().to_header()
-            header = wh.add_cd_matrix(header)
-
-        # check parity
-            if not wh.is_JPEGLike(parity = wh.get_parity(header = header)):
-                logger.log('WTML requires JPEG-like parity (parity < 0, positive det(CD))', level = 'ERROR')
-                logger.log('Flipping parity', level = 'ERROR')
-                header = wh.flip_parity(header, par['height'])
+        # if ('FITSheader' in avm.Spatial._items) and (avm.Spatial.FITSheader is not None):
+        #     logger.log('Using FITS header from AVM', level = 'INFO')
+        #     fitsHeader = avm.Spatial.FITSheader
+        #     if fitsHeader is not None:
+        #         header = Header.fromstring(fitsHeader)
+        #         header = wh.transpose_header(header)
+        # else:
+        header = avm.to_wcs().to_header()
         
         header['IMAGEW'] = par['width']
         header['IMAGEH'] = par['height']
@@ -314,4 +329,4 @@ class ImageSet:
         image_name = os.path.basename(path)
         # rename image with _avm at the end
         image_name = os.path.splitext(image_name)[0] + "_avm" + os.path.splitext(image_name)[1]
-        au.write_avm(image_name, self.header, suffix = "_avm", path = path)
+        au.write_avm(image_name, self.header, suffix = "_avm", path = path) 

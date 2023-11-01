@@ -291,6 +291,7 @@ def create_wtml_from_image(
         write_avm=False,
         zoom_factor = 1.7,
         nudge={'x':0, 'y':0},
+        rotate_cd_matrix_by = 0,
         place_center= {}):
     """
     Create a WTML file from an image file.
@@ -312,8 +313,12 @@ def create_wtml_from_image(
     if name is None:
         name = os.path.splitext(os.path.basename(image_path))[0]
     
-    image_header = hc.ImageHeader(image_path, wcsfile=wcsfile, use_avm=use_avm)
-    header =image_header.header
+    image_header = hc.ImageHeader(image_path, 
+                                  wcsfile=wcsfile, 
+                                  use_avm=use_avm, 
+                                  rotate_cd_matrix = rotate_cd_matrix_by
+    )
+    header = image_header.header
     
     # wtml: name of the wtml file
     # wtml_dir: directory where the wtml file will be saved
@@ -356,6 +361,7 @@ def create_wtml_from_image(
                                       thumbnail_url=thumb_url, 
                                       zoom_factor=zoom_factor, 
                                       nudge=nudge, 
-                                      place_center=place_center)
+                                      place_center=place_center
+                                      )
     
     return tree, imageset, out, image_header
