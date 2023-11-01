@@ -26,6 +26,7 @@ def make_avm_header(header):
     Performs a parity flip if the parity is JPEG-like.
     """
     header = header.copy()
+    header = wh.add_cd_matrix(header)
 
     parity = wh.get_parity(header=header)
     flip_parity = False
@@ -73,7 +74,7 @@ def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", r
     path_out : str, optional
         path to save image, by default "."
     ext : str, optional
-        extension of output image, by default "jpg"
+        extension of output image, by default  same as input or "jpg" if PIL.Image
     remove_full_fits_header : bool, optional
         remove full FITS header from AVM, by default False
 
@@ -84,6 +85,9 @@ def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", r
         defaul output is ./image_tagged.jpg
     """
     
+    if isinstance(image, str):
+        ext = image.split(".")[-1]
+    
     if isinstance(image, str) & (name == "image"):
         name = os.path.basename(image).split(".")[0]
         if path_out == ".":
@@ -91,6 +95,7 @@ def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", r
     
     # ensure we have a PIL image
     # image = ih.get_PIL_image(image)
+    
     
     logger.log(f"\n ****** Embedding AVM in {ext} file ****** \n", level='INFO')
     name = name + ih.get_suffix(suffix)

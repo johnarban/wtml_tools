@@ -95,7 +95,7 @@ def format_wwt_url(name, rot = None, crval = None, offset = None, scale = None, 
     logger.log(f"\tRotation: {url_rot}", level="STATS")
     template = "reverseparity=%s&scale=%.6f&name=%s&imageurl=%s&ra=%.6f&dec=%.6f&x=%.1f&y=%.1f&rotation=%.2f&thumb=%s"
     wwt_url = template  % options
-    logger.log(f"\nWorldWide Telescope URL:\n\t {wwt_url}\n", level="INFO")
+    logger.log(f"\nWorldWide Telescope URL:\n\t {base_url + wwt_url}\n", level="INFO")
     return base_url + wwt_url
 
 def wwt_url_from_header(header, name, url = None, thumb_url = "", nudge = {'x':0, 'y':0}):
@@ -348,6 +348,14 @@ def create_wtml_from_image(
         logger.log(f"Writing AVM to {image_path}", level="INFO")
         image_header.write_avm(output_dir)
     
-    tree, imageset, out = create_wtml(header, image_path, name = name, out=os.path.join(output_dir,wtml), url=image_url, thumbnail_url=thumb_url, zoom_factor=zoom_factor, nudge=nudge, place_center=place_center)
+    tree, imageset, out = create_wtml(header, 
+                                      image_path, 
+                                      name = name, 
+                                      out=os.path.join(output_dir,wtml), 
+                                      url=image_url, 
+                                      thumbnail_url=thumb_url, 
+                                      zoom_factor=zoom_factor, 
+                                      nudge=nudge, 
+                                      place_center=place_center)
     
     return tree, imageset, out, image_header

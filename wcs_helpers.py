@@ -56,6 +56,27 @@ def det_cd(cd_matrix):
     """
     return cd_matrix[0, 0] * cd_matrix[1, 1] - cd_matrix[0, 1] * cd_matrix[1, 0]
 
+def add_cd_matrix(header):
+    """
+    add cd matrix to header if one does not exist
+    """
+    cd_matrix = get_cd(header = header)
+    # check if keys starting with CD exist
+    matrix_keys = {
+                'CD1_1':(0,0),
+                'CD1_2':(0,1),
+                'CD2_1':(1,0),
+                'CD2_2':(1,1)
+                 }
+    if any([key in header for key in matrix_keys]):
+        return header
+    
+    for key, value in matrix_keys.items():
+        header[key] = cd_matrix[value]
+    
+    return header
+    
+    
 
 def pretty_print_matrix(matrix, name=""):
     """Prints a matrix in a pretty way."""
@@ -125,7 +146,7 @@ def flip_parity(header, height=None, inplace=False):
         if "NAXIS2" in header:
             height = header["NAXIS2"]
         else:
-            raise ValueError("Cannot flip parity without height")
+            raise Exception("Cannot flip parity without height")
 
     header["CRPIX2"] = height + 1 - header["CRPIX2"]
     if "PC1_2" in header:
@@ -137,7 +158,7 @@ def flip_parity(header, height=None, inplace=False):
         header["CD1_2"] *= -1
         header["CD2_2"] *= -1
     else:
-        raise ValueError("Cannot flip parity without CD or PC matrix")
+        raise Exception("Cannot flip parity without CD or PC matrix")
     new_cd_sign = get_cd_sign(header=header)
     new_pixel_scale_matrix = get_cd(header)
 
@@ -279,7 +300,7 @@ def clean_header(header, inplace=False, verbose=False):
         header = header.copy()
     header.remove("HISTORY", remove_all=True, ignore_missing=True)
     header.remove("COMMENT", remove_all=True, ignore_missing=True)
-    return header
+    return WCS(header).to_header()
 
 
 def remove_sip(header, inplace=False, verbose=False):

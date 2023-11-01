@@ -19,6 +19,7 @@ except:
     anyascii = lambda s: ''.join(filter(lambda x: x in set(printable), s))
 reload(ih)
 reload(wh)
+reload(au)
 
 import logger as logger
 reload(logger)
@@ -122,6 +123,19 @@ class ImageHeader:
         self.header = wh.clean_header(self.header)
         self.header = wh.remove_sip(self.header)
     
+    
+    def add_cd_matrix(self):
+        """
+        add CD matrix to header if one does not exist
+        """
+        cd_matrix = wh.get_cd(header = self.header)
+        print(cd_matrix)
+        if not any([key.startswith('CD') for key in self.header.keys()]):
+            self.header['CD1_1'] = cd_matrix[0,0]
+            self.header['CD1_2'] = cd_matrix[0,1]
+            self.header['CD2_1'] = cd_matrix[1,0]
+            self.header['CD2_2'] = cd_matrix[1,1]
+    
     def _get_naxis_params(self):
         if (self.header is not None) and ('IMAGEH' in self.header):
             width, height = (self.header['IMAGEW'],self.header['IMAGEH'])
@@ -138,22 +152,38 @@ class ImageHeader:
     
     def header_from_avm(self, avm):
         par = self._get_naxis_params()
-        header = avm.to_wcs().to_header()
+        if not hasattr(avm, 'Spatial'):
+            return None
+        
+        if ('FITSheader' in avm.Spatial._items) and (avm.Spatial.FITSheader is not None):
+            logger.log('Using FITS header from AVM', level = 'INFO')
+            fitsHeader = avm.Spatial.FITSheader
+            logger.log(fitsHeader, level = 'DEBUG')
+            if fitsHeader is not None:
+                header = Header.fromstring(fitsHeader)
+        else:
+            header = avm.to_wcs().to_header()
+            header = wh.add_cd_matrix(header)
+
         # check parity
-        if not wh.is_JPEGLike(parity = wh.get_parity(header = header)):
-            logger.log('WTML requires JPEG-like parity (parity < 0, positive det(CD))', level = 'ERROR')
-            logger.log('Flipping parity', level = 'ERROR')
-            header = wh.flip_parity(header, par['height'])
+            if not wh.is_JPEGLike(parity = wh.get_parity(header = header)):
+                logger.log('WTML requires JPEG-like parity (parity < 0, positive det(CD))', level = 'ERROR')
+                logger.log('Flipping parity', level = 'ERROR')
+                header = wh.flip_parity(header, par['height'])
         
         header['IMAGEW'] = par['width']
         header['IMAGEH'] = par['height']
         
         if 'Description' in avm._items:
-            header['DESCRIPT'] = anyascii(avm._items['Description'])
+            header['DESCRIPT'] = anyascii(avm._items['Description'] or '')
         if 'Credits' in avm._items:
             header['CREDITS'] = avm._items['Credits']
         
         return header
+    
+    def write_avm(self, path = '.'):
+        image_name = os.path.basename(self.image_path)
+        au.write_avm(image_name, self.header, suffix = "_avm", path_out = path)
 
 class ImageSet:
     
