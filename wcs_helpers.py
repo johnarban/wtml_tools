@@ -319,7 +319,7 @@ def clean_header(header, inplace=False, verbose=False):
         header = header.copy()
     header.remove("HISTORY", remove_all=True, ignore_missing=True)
     header.remove("COMMENT", remove_all=True, ignore_missing=True)
-    return WCS(header).to_header()
+    return header
 
 def rotation_matrix(angle, radians=False):
     angle = np.radians(angle) if not radians else angle
@@ -395,12 +395,14 @@ def add_NAXES(header, width = None, height = None, inplace=False, verbose=False)
 def remove_cd(header, verbose=False):
     logger.log("removing CD matrix", level="DEBUG")
     header = header.copy()
-    if hasattr(WCS(header).wcs, "cd"):
-        pre = "CD"
-    elif hasattr(WCS(header).wcs, "pc"):
-        pre = "PC"
-    else:
-        return header
+
+    pre = "CD"
+    header.remove(pre + "1_1", ignore_missing=True)
+    header.remove(pre + "1_2", ignore_missing=True)
+    header.remove(pre + "2_1", ignore_missing=True)
+    header.remove(pre + "2_2", ignore_missing=True)
+    
+    pre = "PC"
     header.remove(pre + "1_1", ignore_missing=True)
     header.remove(pre + "1_2", ignore_missing=True)
     header.remove(pre + "2_1", ignore_missing=True)

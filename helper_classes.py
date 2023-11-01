@@ -131,14 +131,14 @@ class ImageHeader:
         self.header = wh.remove_sip(self.header)
     
     def normalize_header(self):
-        header = WCS(self.header).to_header()
-        
+        header = self.header.copy()
         header = wh.add_cd_matrix(header)
 
         par = self._get_naxis_params()
         header = wh.add_NAXES(header, **par)
         
         self.header = header
+        print(header)
         
         
     def check_flip_parity(self):
@@ -325,8 +325,8 @@ class ImageSet:
     def set_bottoms_up(self,bottoms_up):
         self.BottomsUp = bottoms_up
         
-    def write_avm(self,path):
-        image_name = os.path.basename(path)
-        # rename image with _avm at the end
-        image_name = os.path.splitext(image_name)[0] + "_avm" + os.path.splitext(image_name)[1]
-        au.write_avm(image_name, self.header, suffix = "_avm", path = path) 
+    # def write_avm(self,path):
+    #     image_name = os.path.basename(path)
+    #     # rename image with _avm at the end
+    #     image_name = os.path.splitext(image_name)[0] + "_avm" + os.path.splitext(image_name)[1]
+    #     au.write_avm(image_name, self.header, suffix = "_avm", path = path) 
