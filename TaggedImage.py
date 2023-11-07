@@ -1,4 +1,9 @@
-    
+import os
+import io
+import numpy as np
+from astropy.io import fits
+import wcs_helpers as wh
+from astropy.wcs import WCS
 # no currently implemented
 class WTMLHeader:
     
@@ -63,11 +68,11 @@ class TaggedImage:
         Get the image header from a FITS file.
         """
         if self.wcs_file is not None:
-            return Header.fromfile(self.wcs_file)
+            return ih.open_header(self.wcs_file)
         else:
             if os.path.splitext(self.image_file)[1] in FITS_EXTENSIONS:
                 logger.log("Reading FITS header from image file", level=1)
-                return Header.fromfile(self.image_file), None
+                return ih.open_header(self.image_file), None
             elif os.path.splitext(self.image_file)[1] in IMAGE_EXTENSIONS:
                 try:
                     logger.log("Reading AVM from image file", level=1)

@@ -5,13 +5,14 @@ import json
 from pyavm import AVM
 from pyavm.exceptions import NoXMPPacketFound
 
-from astropy.io.fits import Header
+from astropy.io.fits import Header, ImageHDU
 from astropy.wcs import WCS
 
 import io_helpers as ih
 import wcs_helpers as wh
 import avm_utils as au
 
+import numpy as np
 try:
     from anyascii import anyascii
 except:
@@ -29,7 +30,13 @@ IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"]
 
 
 class ImageHeader:
-    def __init__(self, image_path, wcsfile=None, use_avm=False, rotate_cd_matrix = 0):
+    def __init__(self, 
+                 image_path, 
+                 wcsfile=None, 
+                 use_avm=False, 
+                 rotate_cd_matrix = 0,
+                 force_image_center = False,
+                 ):
         self.image_path = image_path
         self.basename = os.path.basename(image_path)
         self.dirname = os.path.dirname(image_path)
@@ -56,7 +63,7 @@ class ImageHeader:
             else:
                 self.wcsfile = self._valid_wcs_file(self.wcsfile)
                 if self.wcsfile is not None:
-                    self.wcs_header = Header.fromfile(self.wcsfile)
+                    self.wcs_header = ih.open_header(self.wcsfile)
                     if not self.use_avm:
                         self.header = self.wcs_header
 
@@ -65,8 +72,13 @@ class ImageHeader:
             logger.log("Creating blank header", level="ERROR")
             self.header = wh.blank_header()
         
+        
         self.clean_header()
         self.normalize_header()
+        
+        
+        if force_image_center:
+            self.crpix_to_center()
         
         
     def __repr__(self):
@@ -132,10 +144,21 @@ class ImageHeader:
         par = self._get_naxis_params()
         header = wh.add_NAXES(header, **par)
         
+        # add keywords required for FITS validation
+        header = wh.add_required_keywords(header)
+        
+        # header = wh.fixup_header(header)
+        
         self.header = header
-        print(header)
         
-        
+    def crpix_to_center(self):
+        logger.log('Moving CRPIX to center', level = 'INFO')
+        width, height = ih.get_image_size(self.image_path)
+        header = self.header.copy()
+        header['CRPIX1'] = (width + 1) / 2
+        header['CRPIX2'] = (height + 1) / 2
+        self.header = header
+    
     def check_flip_parity(self):
         par = self._get_naxis_params()
 
@@ -149,10 +172,11 @@ class ImageHeader:
 
     
     def _get_naxis_params(self):
-        if (self.header is not None) and ('IMAGEH' in self.header):
-            width, height = (self.header['IMAGEW'],self.header['IMAGEH'])
-        else:
+        if self.image_path is not None:
             width, height = ih.get_image_size(self.image_path)
+        elif (self.header is not None) and ('IMAGEH' in self.header):
+            width, height = (self.header['IMAGEW'],self.header['IMAGEH'])
+
         return {'width' : width, 'height' : height}
     
     def add_naxis_params(self):
@@ -182,18 +206,45 @@ class ImageHeader:
         header = avm.to_wcs().to_header()
         
         header['IMAGEW'] = par['width']
+        # add comment
+        header.comments['IMAGEW'] = 'Image width in pixels'
         header['IMAGEH'] = par['height']
+        header.comments['IMAGEH'] = 'Image height in pixels'
         
         if 'Description' in avm._items:
-            header['DESCRIPT'] = anyascii(avm._items['Description'] or '')
+            header['DESCRIPT'] = anyascii(avm._items['Description'] or 'none')
+            header.comments['DESCRIPT'] = 'Description of the image'
         if 'Credits' in avm._items:
             header['CREDITS'] = avm._items['Credits']
+            header.comments['CREDITS'] = 'Credits for the image'
         
         return header
     
-    def write_avm(self, path = '.'):
+    def write_avm(self, path = '.', force_180 = False):
         image_name = os.path.basename(self.image_path)
-        au.write_avm(image_name, self.header, suffix = "_avm", path_out = path)
+        au.write_avm(image_name, self.header, suffix = "_avm", path_out = path, force_180=force_180)
+    
+    def write_fits(self, path='.', name=None):
+        data = ih.get_PIL_image(self.image_path)
+        # convert PIL image to grayscale
+        if 'RGB' in data.mode:
+            data = data.convert('L')
+        if name is None:
+            name = self.imagename + ".fits"
+        fits_path = os.path.join(path, name)
+        # output image as fits files
+
+        hdu = ImageHDU(data=data, header=self.header)
+        hdu.writeto(fits_path, overwrite=True)
+    
+    def write_header(self, name = None):
+        if name is None:
+            name = self.imagename + ".wcs.fits"
+        header_path = os.path.join(self.dirname, name)
+        # output header as fits files
+        header = wh.fixup_header(self.header)
+        header.tofile(header_path, sep='', endcard=True, padding=True, overwrite=True)
+        
 
 class ImageSet:
     

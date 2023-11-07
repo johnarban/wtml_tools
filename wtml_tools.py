@@ -56,7 +56,6 @@ def header_to_wtml_params(header, for_url = False, nudge={'x':0, 'y':0}):
     crpix = [(header["NAXIS1"] + 1) / 2, (header["NAXIS2"] + 1) / 2]
     crval = wcs.wcs_pix2world(*crpix, 1)
     if for_url:
-        print('for url')
         offset = crpix[0] + nudge['x'], crpix[1] + nudge['y']
     else:
         offset = crpix[0] + nudge['x'], crpix[1] + nudge['y']
@@ -191,7 +190,6 @@ def set_xml_element(el, attribute=None, text=None):
     if text is not None:
         el.text = text
 
-
 def create_wtml(
     header,
     image_path,
@@ -289,9 +287,15 @@ def create_wtml_from_image(
         suffix="",
         to_github=False,
         write_avm=False,
+        write_header=False,
         zoom_factor = 1.7,
         nudge={'x':0, 'y':0},
         rotate_cd_matrix_by = 0,
+        force_avm_180 = False,
+        force_image_center = False,
+        force_bottoms_up = False,
+        to_fits=False,
+        mods = None,
         place_center= {}):
     """
     Create a WTML file from an image file.
@@ -304,6 +308,7 @@ def create_wtml_from_image(
     image_url: url where the wtml file can find the image. If not provided it will use the name of the image file
     thumb_url: url where the wtml file can find the image thumbnail. If not provided it will use the name of the image_url
     suffix: suffix to add to the name of the wtml file (and other outputs)
+    foce_avm_180: if True, it will force the AVM rotatiion to be angle - 180 degrees. 
     """
     logger.log(f"image_path: {image_path}", level="INFO")
     # Get the image
@@ -313,11 +318,22 @@ def create_wtml_from_image(
     if name is None:
         name = os.path.splitext(os.path.basename(image_path))[0]
     
+    if wcsfile is None:
+        logger.log(f"wcsfile not provided.", level="INFO")
+    else:
+        logger.log(f"wcsfile: {wcsfile}", level="INFO")
     image_header = hc.ImageHeader(image_path, 
                                   wcsfile=wcsfile, 
                                   use_avm=use_avm, 
-                                  rotate_cd_matrix = rotate_cd_matrix_by
+                                  rotate_cd_matrix = rotate_cd_matrix_by,
+                                  force_image_center = force_image_center,
     )
+    if force_bottoms_up:
+        image_header.header = wh.flip_parity(image_header.header)
+    
+    if mods is not None:
+        image_header.header = wh.modify_header(image_header.header, **mods)
+    
     header = image_header.header
     
     # wtml: name of the wtml file
@@ -351,8 +367,17 @@ def create_wtml_from_image(
     
     if write_avm:
         logger.log(f"Writing AVM to {image_path}", level="INFO")
-        image_header.write_avm(output_dir)
+        image_header.write_avm(output_dir, force_180=False)
     
+    # save the header
+    if write_header:
+        logger.log(f"Writing header to {image_path}", level="INFO")
+        image_header.write_header(name = 'header.hdr')
+    
+    if to_fits:
+        logger.log(f"Writing FITS to {image_path}", level="INFO")
+        image_header.write_fits(output_dir, name='image.fits')
+        
     tree, imageset, out = create_wtml(header, 
                                       image_path, 
                                       name = name, 

@@ -1,4 +1,4 @@
-from astropy.io.fits import Header
+from astropy.io.fits import Header, PrimaryHDU
 from astropy.wcs import WCS
 from math import atan2, atan
 from astropy.wcs.utils import _is_cd_orthogonal
@@ -15,6 +15,81 @@ def ensure_wcs(supposed_wcs):
     else:
         return WCS(supposed_wcs)
 
+def add_required_keywords(header, inplace=False):
+    # need to ensure SIMPLE and BITPIX are in the header
+    if not inplace:
+        header = header.copy()
+    if 'SIMPLE' not in header:
+        # add simple as first card
+        header.insert(0, ('SIMPLE', True))
+        # header['SIMPLE'] = True
+    if 'BITPIX' not in header:
+        # add bitpix as second card
+        header.insert(1, ('BITPIX', -32))
+        # header['BITPIX'] = -32
+    # and end card to make sure it is a valid FITS file
+    return header
+
+
+
+def fixup_header(header):
+    # convert a header to a wcs and back to a header
+    # and add back in any missing keywords
+    # this is useful for cleaning up a header
+    wcs = ensure_wcs(header)
+    new_header = wcs.to_header()
+    new_header = PrimaryHDU(header=new_header).header
+    # new_header = add_required_keywords(new_header)
+    # # # fill in keys that are in header but missing in new_header
+    # for key in header:
+    #     if (
+    #         (key not in new_header) 
+    #         and (key not in ['SIMPLE', 'BITPIX']) 
+    #         and not ('CD' in key and '_' in key) 
+    #         and not ('PC' in key and '_' in key)
+    #         ):
+    #         print(key)
+    #         new_header[key] = header[key]
+    # add back naxis1 and naxis2, naxis if present
+    if 'NAXIS' in header:
+        new_header['NAXIS'] = header['NAXIS']
+    if 'NAXIS1' in header:
+        new_header['NAXIS1'] = header['NAXIS1']
+    if 'NAXIS2' in header:
+        new_header['NAXIS2'] = header['NAXIS2']
+    # imagew and imageh
+    if 'IMAGEW' in header:
+        new_header['IMAGEW'] = header['IMAGEW']
+    if 'IMAGEH' in header:
+        new_header['IMAGEH'] = header['IMAGEH']
+        
+    # replace pc matrix with cd matrix and cdelt
+    # new_header = convert_pc_to_cd(new_header)
+    
+    return new_header
+            
+    
+def convert_pc_to_cd(header, inplace=False):
+    cd_matrix = get_cd(header)
+    wcs = ensure_wcs(header)
+    cdelt = wcs.wcs.get_cdelt()
+    if not inplace:
+        header = header.copy()
+    header['CD1_1'] = cd_matrix[0,0]
+    header['CD1_2'] = cd_matrix[0,1]
+    header['CD2_1'] = cd_matrix[1,0]
+    header['CD2_2'] = cd_matrix[1,1]
+    header['CDELT1'] = cdelt[0]
+    header['CDELT2'] = cdelt[1]
+    header.remove('PC1_1', ignore_missing=True)
+    header.remove('PC1_2', ignore_missing=True)
+    header.remove('PC2_1', ignore_missing=True)
+    header.remove('PC2_2', ignore_missing=True)
+    
+    return header
+
+    
+
 def ensure_header(supposed_header):
     """Converts a wcs to a header if it isn't already one."""
     if isinstance(supposed_header, Header):
@@ -28,7 +103,7 @@ def is_header_or_wcs(supposed_wcs_or_header):
 ## CD Matrix tools
 ## FITS originally used CDELT and CROTA to describe the scale and rotation
 ## Then it switched to using
-def get_cd(header=None, wcs=None):
+def get_cd(header=None, wcs=None, as_dict=False):
     """Return the CD matrix from a header or wcs object.
     This is a convenience function that will return the CD matrix
     from either a header or a wcs object.
@@ -41,6 +116,15 @@ def get_cd(header=None, wcs=None):
     elif wcs is not None:
         wcs = ensure_wcs(wcs)
 
+    if as_dict:
+        cd = wcs.pixel_scale_matrix
+        return {
+            'CD1_1':cd[0,0],
+            'CD1_2':cd[0,1],
+            'CD2_1':cd[1,0],
+            'CD2_2':cd[1,1]
+        }
+        
     return wcs.pixel_scale_matrix
 
 
@@ -96,6 +180,22 @@ def replace_cd_matrix(header, cd_matrix):
     
     return header
 
+def replace_pc_matrix(header, pc_matrix):
+    """
+    replace pc matrix in header with pc_matrix
+    """
+    # check if keys starting with CD exist
+    matrix_keys = {
+                'PC1_1':(0,0),
+                'PC1_2':(0,1),
+                'PC2_1':(1,0),
+                'PC2_2':(1,1)
+                 }
+    for key, value in matrix_keys.items():
+        header[key] = pc_matrix[value]
+    
+    return header
+
 def pretty_print_matrix(matrix, name=""):
     """Prints a matrix in a pretty way."""
     str1 = f" [ {matrix[0,0]:9.3g} {matrix[0,1]:9.3g} ]"
@@ -130,7 +230,79 @@ def get_cd_sign(cd=None, header=None):
     else:
         return -1
 
+def center_header(header, loc = None, inplace=False):
+    if loc is None:
+        wcs = WCS(header)
+        crpix = [(header["NAXIS1"] + 1) / 2, (header["NAXIS2"] + 1) / 2]
+        crval = np.atleast_1d(wcs.wcs_pix2world(*crpix, 1))
+    else:
+        crpix = loc['crpix']
+        crval = loc['crval']
+    
+    if not inplace:
+        header = header.copy()
+    
+    header['CRPIX1'] = crpix[0]
+    header['CRPIX2'] = crpix[1]
+    header['CRVAL1'] = crval[0]
+    header['CRVAL2'] = crval[1]
+    
+    return header
 
+def modify_header(header, 
+                  scale = 0, 
+                  rot = 0, 
+                  nudge = {'x':0, 'y':0}, 
+                  center = None, 
+                  swap = False, 
+                  flipx = False,
+                  flipy = False,
+                  inplace=False, verbose=False):
+    
+    if not inplace:
+        header = header.copy()
+    # scale by modifying CDELT
+    header = fixup_header(header) # converts to regular form with PC matrix and CDELT = 1
+    if scale != 0:
+        logger.log(f"Scaling by {scale}", level='ALWAYS')
+        if isinstance(scale, dict):
+            header['CDELT1'] *= scale['x']
+            header['CDELT2'] *= scale['y']
+        else:
+            header['CDELT1'] *= scale
+            header['CDELT2'] *= scale
+    
+    # rotate the pc matrix
+    if rot != 0:
+        logger.log(f"Rotating by {rot} degrees", level='ALWAYS')
+        header = rotate_pc_matrix(header, angle=rot, ccw=True, swap=swap)
+    
+    # makes sure the rotation is about the center of the imag
+    
+    if (center is not None):
+        if 'NAXIS1' in header and 'NAXIS2' in header:
+            if isinstance(center, dict):
+                header = center_header(header, loc=center)
+            else:
+                header = center_header(header)
+        else:
+            logger.log("Can't center image if nor naxis keywords are present", level='ERROR')
+    
+    if nudge['x'] != 0 or nudge['y'] != 0:
+        logger.log(f"Nudging by {nudge}", level='ALWAYS')
+        # nudge the crpix
+        header['CRPIX1'] += nudge['x']
+        header['CRPIX2'] += nudge['y']
+        
+    if flipy:
+        logger.log("Flipping Y axis", level='ALWAYS')
+        header['CDELT2'] *= -1
+    if flipx:
+        logger.log("Flipping X axis", level='ALWAYS')
+        header['CDELT1'] *= -1
+    
+    return header
+    
 
 def get_parity(cd=None, header=None):
     """Return the parity of the CD matrix."""
@@ -325,9 +497,17 @@ def rotation_matrix(angle, radians=False):
     angle = np.radians(angle) if not radians else angle
     return np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
 
-def rotate_cd_matrix(header, angle = 90, ccw = True):
+def rotate_cd_matrix(header, angle = 90, ccw = True, swap=True):
+    if 'CD1_1' not in header:
+        if 'PC1_1' in header:
+            logger.log('CD matrix not present. Attempting to rotate PC matrix', level='INFO')
+            header = rotate_pc_matrix(header, angle=angle, ccw=ccw)
+        else:
+            logger.log("Cannot rotate CD matrix without CD or PC matrix", "ERROR")
+            return header
     # rotate CD matrix by 90 degrees (counter-clock-wise)
     logger.log(f"Rotating CD Matrix by {angle} degrees", level='INFO')
+    
     
     hdr = header.copy()
 
@@ -340,15 +520,48 @@ def rotate_cd_matrix(header, angle = 90, ccw = True):
     
     hdr = replace_cd_matrix(hdr, cd_matrix)
     
-    # swap CRPIX1 and CRPIX2
-    logger.log("\talso swapping CRPIX1 and CRPIX2", level='INFO')
-    hdr['CRPIX1'], hdr['CRPIX2'] = header['CRPIX2'], header['CRPIX1']
+    if swap:
+        # swap CRPIX1 and CRPIX2
+        logger.log("\talso swapping CRPIX1 and CRPIX2", level='INFO')
+        hdr['CRPIX1'], hdr['CRPIX2'] = header['CRPIX2'], header['CRPIX1']
     
     
     return hdr
 
-        
+def get_pc(header):
+    wcs = WCS(ensure_header(header))
+    return wcs.wcs.get_pc()
+
+
+def rotate_pc_matrix(header, angle = 90, ccw = True, swap=True):
+    if 'PC1_1' not in header:
+        if 'CD1_1' in header:
+            logger.log('PC matrix not present. Attempting to rotate CD matrix', level='INFO')
+            header = rotate_cd_matrix(header, angle=angle, ccw=ccw)
+        else:
+            logger.log("Cannot rotate PC matrix without CD or PC matrix", "ERROR")
+            return header
     
+    logger.log(f"Rotating PC Matrix by {angle} degrees", level='INFO')
+    
+    hdr = header.copy()
+    
+    pc_matrix = get_pc(header)
+    if ccw:
+        pc_matrix = rotation_matrix(angle) @ pc_matrix
+    else:
+        pc_matrix = rotation_matrix(-angle) @ pc_matrix
+        
+    hdr = replace_pc_matrix(hdr, pc_matrix)
+    
+    if swap:
+        # swap CRPIX1 and CRPIX2
+        logger.log("\talso swapping CRPIX1 and CRPIX2", level='INFO')
+        hdr['CRPIX1'], hdr['CRPIX2'] = header['CRPIX2'], header['CRPIX1']
+    
+    return hdr
+    
+
 
 
 def remove_sip(header, inplace=False, verbose=False):
@@ -357,8 +570,10 @@ def remove_sip(header, inplace=False, verbose=False):
         logger.log("removing SIP", level="DEBUG")
     if not inplace:
         header = header.copy()
-    header["CTYPE1"] = header["CTYPE1"].replace("-SIP", "")
-    header["CTYPE2"] = header["CTYPE2"].replace("-SIP", "")
+    if 'CTYPE1' in header:
+        header["CTYPE1"] = header["CTYPE1"].replace("-SIP", "")
+    if 'CTYPE2' in header:
+        header["CTYPE2"] = header["CTYPE2"].replace("-SIP", "")
     for i in [0, 1, 2]:
         for j in [0, 1, 2]:
             header.remove(f"A_{i}_{j}", ignore_missing=True)
@@ -412,11 +627,14 @@ def remove_cd(header, verbose=False):
 
 def blank_header():
     # Create a blank FITS header
-    header = Header()
+    header = Header(
+        {'SIMPLE': True, 'BITPIX': -32}
+    )
     naxis1 = 256
     naxis2 = 256
 
     # Set the coordinate system to ICRS
+    header['BITPIX'] = -32
     header['CTYPE1'] = 'RA---TAN'
     header['CTYPE2'] = 'DEC--TAN'
     header['CRVAL1'] = 0.0

@@ -11,6 +11,7 @@ reload(wh)
 import io_helpers as ih
 reload(ih)
 import helper_classes as hc
+import numpy as np
 
 DEBUG_LEVELS = {"DEBUG": 0, "INFO": 1}
 DEBUG_LEVEL = 1
@@ -56,7 +57,7 @@ def make_avm_header(header):
 
 
 
-def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", remove_full_fits_header=False):
+def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", remove_full_fits_header=False, force_180 = False):
     """
     output_avm takes an image and a header and embeds the AVM in the image
     write's the image out to path_out/name_suffix_tagged.ext
@@ -114,7 +115,8 @@ def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", r
     logger.log(header.__repr__(),level="DEBUG")
     avm = AVM.from_header(header)
     if remove_full_fits_header: avm.Spatial.FITSheader = ""
-    # avm.Spatial.Rotation = avm.Spatial.Rotation - 180
+    if force_180:
+        avm.Spatial.Rotation = np.around(avm.Spatial.Rotation, 3) - 180
     logger.log(avm.Spatial, level='DEBUG')
     
     

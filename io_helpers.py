@@ -30,9 +30,9 @@ def get_PIL_image(im):
     if isinstance(im, str):
         if im.startswith("http"):
             return get_PIL_image_from_url(im)
-        with Image.open(im) as pil_im:
-            im = pil_im
-        return im
+        # with Image.open(im) as pil_im:
+        #     im = pil_im
+        return Image.open(im)
     elif isinstance(im, Image):
         return im
 
@@ -75,17 +75,24 @@ def get_suffix(suffix):
     # add "_" to the suffix if it doesn't start with "_" and isn't empty
     return ("_" if suffix and suffix.find("_") != 0 else "") + suffix
 
+def open_header(filename):
+    try:
+        return fits.Header.fromfile(filename)
+    except:
+        return fits.Header.fromfile(filename, endcard=False, padding=False)
+    
+
 def get_image_header(image_file, wcs_file = None):
     """
     Get the image header from a FITS file.
     """
     if wcs_file is not None:
-        return fits.Header.fromfile(wcs_file)
+        return open_header(wcs_file)
     else:
         # check if the file is a FITS file
         if os.path.splitext(image_file)[1] in FITS_EXTENSIONS:
             logger.log("Reading FITS header from input FITS file", level="INFO")
-            return fits.Header.fromfile(image_file), None
+            return open_header(image_file), None
         elif os.path.splitext(image_file)[1] in IMAGE_EXTENSIONS:
             try:
                 logger.log("Reading AVM from image file", level="INFO")
@@ -106,8 +113,8 @@ def get_clean_header(wcsfile, remove_comments=True, remove_sip = True):
     if isinstance(wcsfile, str):
         logger.log(f"Reading header from file {wcsfile}", level='DEBUG')
     else:
-        print(wcsfile)
-    header = fits.Header.fromfile(wcsfile)
+        logger.log(f"io_helpers.get_clean_header: wcsfile is type{type(wcsfile)}", level='ERROR')
+    header = open_header(wcsfile)
     if remove_comments:
         logger.log("Cleaning header", level='DEBUG')
         header = wh.clean_header(header)
