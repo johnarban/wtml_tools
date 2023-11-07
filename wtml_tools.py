@@ -242,7 +242,8 @@ def create_wtml(
     el_credits_url.text = credits_url
 
     el_description = ET.Element("Description")
-    el_description.text = description
+    # interpret description as raw html
+    el_description.text = ET.CDATA(description)
 
     el_thumbnail_url = ET.Element("ThumbnailUrl")
     el_thumbnail_url.text = (
@@ -268,6 +269,85 @@ def create_wtml(
     tree.write(out)
     xml.split_xml_attributes(out, field="ImageSet")
     return tree, imageset, out
+
+def add_description_credits_to_wtml(wtml_file, 
+                                    description = "description", 
+                                    credits = "credits", 
+                                    credits_url = "credits_url",
+                                    place_name = None,
+                                    imageset_name = None
+                                    ):
+    # wtml is an xml file
+    # it shoulud have <Description> and <Credits> and <CreditsUrl> tags
+    # we want to add the description and credits to the wtml file
+    
+    # parse the xml
+    try:
+        tree = ET.parse(wtml_file)
+    except:
+        print('error',wtml_file)
+        return
+    root = tree.getroot()
+    
+    imageset = root.find(".//ImageSet")
+    
+    append_description = False
+    append_credits = False
+    append_url = False
+    
+    # find the <Description> tag
+    description_tag = root.find(".//Description")
+    if description_tag is None:
+        append_description = True
+        # if there is no description tag, create one
+        description_tag = ET.Element("Description")
+    # add the description to the tag
+    description_tag.text = description
+    
+    # find the <Credits> tag
+    credits_tag = root.find(".//Credits")
+    if credits_tag is None:
+        append_credits = True
+        # if there is no credits tag, create one
+        credits_tag = ET.Element("Credits")
+        imageset.append(credits_tag)
+    # add the credits to the tag
+    credits_tag.text = credits
+    
+    # find the <CreditsUrl> tag
+    credits_url_tag = root.find(".//CreditsUrl")
+    if credits_url_tag is None:
+        append_url = True
+        # if there is no credits_url tag, create one
+        credits_url_tag = ET.Element("CreditsUrl")
+        imageset.append(credits_url_tag)
+    # add the credits_url to the tag
+    credits_url_tag.text = credits_url
+    
+    
+    if place_name  is not None:
+        place = root.find(".//Place")
+        place.attrib['Name'] = place_name
+    
+    if imageset_name is not None:
+        imageset.attrib['Name'] = imageset_name
+        
+    if append_description:
+        imageset.append(description_tag)
+    if append_credits:
+        imageset.append(credits_tag)
+    if append_url:
+        imageset.append(credits_url_tag)
+    
+    #print the xml file
+    xml.smart_indent_xml(root)
+    # write the xml to the wtml file
+    tree.write(wtml_file)
+    xml.split_xml_attributes(wtml_file, field="ImageSet")
+    # replace the &lt; and &gt; with < and >
+    xml.replace_lt_gt(wtml_file)
+    
+    # repla
 
 # what do we want to specify when creatng a wtml file?
 # name: Place and ImageSet name
@@ -296,7 +376,11 @@ def create_wtml_from_image(
         force_bottoms_up = False,
         to_fits=False,
         mods = None,
-        place_center= {}):
+        place_center= {},
+        description = "description",
+        credits = "credits",
+        credits_url = "credits_url",
+        ):
     """
     Create a WTML file from an image file.
     image_path: path to image file
@@ -386,7 +470,10 @@ def create_wtml_from_image(
                                       thumbnail_url=thumb_url, 
                                       zoom_factor=zoom_factor, 
                                       nudge=nudge, 
-                                      place_center=place_center
+                                      place_center=place_center,
+                                      description=description,
+                                      credits=credits,
+                                      credits_url=credits_url,
                                       )
     
     return tree, imageset, out, image_header

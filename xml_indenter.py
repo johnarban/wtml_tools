@@ -70,3 +70,16 @@ def split_xml_attributes(xmlfile, field = '<'):
         f.writelines(new_lines)
     return new_lines
  
+ 
+def replace_lt_gt(xmlfile):
+    with open(xmlfile, 'r') as f:
+        lines = f.readlines()
+    new_lines = []
+    for line in lines:
+        if (line.lstrip()[0] == '<'):
+            line = line.replace('&lt;','<')
+            line = line.replace('&gt;','>')
+        new_lines.append(line)
+    with open(xmlfile, 'w') as f:
+        f.writelines(new_lines)
+    return new_lines
