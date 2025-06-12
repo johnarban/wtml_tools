@@ -7,8 +7,10 @@ from astropy.io import fits
 from astropy.io.fits import Header
 from astropy.wcs import WCS
 import wcs_helpers as wh
+
 reload(wh)
 import io_helpers as ih
+
 reload(ih)
 import helper_classes as hc
 import numpy as np
@@ -19,7 +21,9 @@ FITS_EXTENSIONS = [".fits", ".fit", ".fts", ".fz", ".fits.fz"]
 IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"]
 
 import logger as logger
+
 reload(logger)
+
 
 def make_avm_header(header):
     """
@@ -56,8 +60,16 @@ def make_avm_header(header):
     return header
 
 
-
-def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", remove_full_fits_header=False, force_180 = False):
+def write_avm(
+    image,
+    header,
+    name="image",
+    suffix="",
+    path_out=".",
+    ext="jpg",
+    remove_full_fits_header=False,
+    force_180=False,
+):
     """
     output_avm takes an image and a header and embeds the AVM in the image
     write's the image out to path_out/name_suffix_tagged.ext
@@ -85,74 +97,71 @@ def write_avm(image, header, name="image", suffix="", path_out=".", ext="jpg", r
         path to image tagged with AVM, AVM object
         defaul output is ./image_tagged.jpg
     """
-    
+
     # if isinstance(image, str):
     #     ext = image.split(".")[-1]
-    
+
     if isinstance(image, str) & (name == "image"):
         name = os.path.basename(image).split(".")[0]
         if path_out == ".":
             path_out = os.path.dirname(image)
-    
+
     # ensure we have a PIL image
     # image = ih.get_PIL_image(image)
-    
-    
-    logger.log(f"\n ****** Embedding AVM in {ext} file ****** \n", level='INFO')
+
+    logger.log(f"\n ****** Embedding AVM in {ext} file ****** \n", level="INFO")
     name = name + ih.get_suffix(suffix)
 
     save_image_path = os.path.join(path_out, name + "_tagged." + ext)
 
     if header is None:
         if isinstance(image, str):
-            ih.guess_wcs_filename(image_path = image)
+            ih.guess_wcs_filename(image_path=image)
             header = hc.ImageHeader(image).header
-
 
     # make_avm_header puts scale, rot in header, removes cd matrix
     # and applies parity flip if needed
     header = make_avm_header(header)
-    logger.log(header.__repr__(),level="DEBUG")
+    logger.log(header.__repr__(), level="DEBUG")
     avm = AVM.from_header(header)
-    if remove_full_fits_header: avm.Spatial.FITSheader = ""
+    if remove_full_fits_header:
+        avm.Spatial.FITSheader = ""
     if force_180:
         avm.Spatial.Rotation = np.around(avm.Spatial.Rotation, 3) - 180
-    logger.log(avm.Spatial, level='DEBUG')
-    
-    
-    temp = "temp_can_delete." + ext 
+    logger.log(avm.Spatial, level="DEBUG")
+
+    temp = "temp_can_delete." + ext
     with Image.open(image) as im:
         im.save(temp)
     avm.embed(temp, save_image_path)
     # os.remove(temp)
-    
-    logger.log(f"AVM tagged image saved to {save_image_path}", level='INFO')
+
+    logger.log(f"AVM tagged image saved to {save_image_path}", level="INFO")
 
     return save_image_path, avm
 
 
-
-
 def add_avm_tags(image_path, wcsfile=None, name=None, path_out=".", suffix=""):
-    logger.log(f"\n ****** Processing {image_path} ****** \n", level='INFO')
+    logger.log(f"\n ****** Processing {image_path} ****** \n", level="INFO")
     im = Image.open(image_path)
     ext = image_path.split(".")[-1]
     suffix = ih.get_suffix(suffix)
 
     if wcsfile is None:
         wcsfile = image_path.replace("." + ext, ".wcs")
-    elif wcsfile.find('*') == 0:
+    elif wcsfile.find("*") == 0:
         wcsfile = glob(wcsfile)[0]
 
     if name is None:
         name = image_path.replace(f".{ext}", "")
-    
+
     image_header = hc.ImageHeader(image_path, wcsfile=wcsfile)
-    header =image_header.header
-    
+    header = image_header.header
+
     header = ih.get_clean_header(wcsfile)
     header = wh.add_NAXES(header, *im.size)
 
-    out_tagged, avm = write_avm(im, header, name=name, suffix=suffix, path_out=path_out, ext=ext)
+    out_tagged, avm = write_avm(
+        im, header, name=name, suffix=suffix, path_out=path_out, ext=ext
+    )
     return header, WCS(header), avm, out_tagged, im
-
