@@ -52,7 +52,9 @@ class Astrometry:
 
     def login(self):
         self._post_data = {"request-json": json.dumps({"apikey": self.api_key})}
-        R = requests.post("http://nova.astrometry.net/api/login", data=self._post_data)
+        R = requests.post(
+            "http://nova.astrometry.net/api/login", data=self._post_data
+        )
         self.session = R.json()["session"]
         self.login_session = R
 
@@ -86,11 +88,17 @@ class Astrometry:
         if center_ra is not None and center_dec is not None:
             radius = 10 or radius
 
-        position = {"center_ra": center_ra, "center_dec": center_dec, "radius": radius}
+        position = {
+            "center_ra": center_ra,
+            "center_dec": center_dec,
+            "radius": radius,
+        }
         if len([x for x in position.values() if x is not None]) == 3:
             message.update(position)
 
-        R = requests.post(upload_url, data={"request-json": json.dumps(message)})
+        R = requests.post(
+            upload_url, data={"request-json": json.dumps(message)}
+        )
         self._post_response = R
         if R.status_code != 200:
             raise ValueError(
@@ -166,8 +174,8 @@ class Astrometry:
     def status_url(self):
         if self.subid is not None:
             if self._status_url is None:
-                self._status_url = "https://nova.astrometry.net/status/{}".format(
-                    self.subid
+                self._status_url = (
+                    "https://nova.astrometry.net/status/{}".format(self.subid)
                 )
         return self._status_url
 
@@ -175,8 +183,10 @@ class Astrometry:
     def results_url(self):
         if self.subid is not None:
             if self._results_url is None:
-                self._results_url = "https://nova.astrometry.net/user_images/{}".format(
-                    self.user_image
+                self._results_url = (
+                    "https://nova.astrometry.net/user_images/{}".format(
+                        self.user_image
+                    )
                 )
         return self._results_url
 

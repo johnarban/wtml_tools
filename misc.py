@@ -10,7 +10,6 @@ from reproject.mosaicking import find_optimal_celestial_wcs
 import wcs_helpers as wh
 import numpy as np
 
-
 DEBUG_LEVELS = {"DEBUG": 0, "INFO": 1}
 DEBUG_LEVEL = 1
 FITS_EXTENSIONS = [".fits", ".fit", ".fts", ".fz", ".fits.fz"]
@@ -49,10 +48,17 @@ def preview_image(url, coords=None):
         )  # HD catalog
         coords = catalog[0]["_RA.icrs", "_DE.icrs"]
         coords.rename_columns(["_RA.icrs", "_DE.icrs"], ["ra", "dec"])
-        coords = SkyCoord(coords["ra"], coords["dec"], unit=(u.hourangle, u.deg))
+        coords = SkyCoord(
+            coords["ra"], coords["dec"], unit=(u.hourangle, u.deg)
+        )
 
     g.show_markers(
-        coords.ra, coords.dec, marker="x", facecolor="red", edgecolor="red", s=15
+        coords.ra,
+        coords.dec,
+        marker="x",
+        facecolor="red",
+        edgecolor="red",
+        s=15,
     )
     g.axis_labels.show()
     # g.tick_labels.set_xformat('hh:mm:ss.ss')

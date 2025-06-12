@@ -33,6 +33,7 @@ IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"]
 
 
 class ImageHeader:
+
     def __init__(
         self,
         image_path,
@@ -57,7 +58,9 @@ class ImageHeader:
         if use_avm and (self.avm is not None):
             self.header = self.header_from_avm(self.avm)
             if self.rotate_cd_matrix_by != 0:
-                self.header = wh.rotate_cd_matrix(self.header, self.rotate_cd_matrix_by)
+                self.header = wh.rotate_cd_matrix(
+                    self.header, self.rotate_cd_matrix_by
+                )
             self.check_flip_parity()
         else:
             use_avm = False
@@ -72,7 +75,9 @@ class ImageHeader:
                         self.header = self.wcs_header
 
         if self.header is None:
-            logger.log(f"Could not find header for {self.image_path}", level="ERROR")
+            logger.log(
+                f"Could not find header for {self.image_path}", level="ERROR"
+            )
             logger.log("Creating blank header", level="ERROR")
             self.header = wh.blank_header()
 
@@ -103,9 +108,12 @@ class ImageHeader:
             wcsfile = ih.guess_wcs_filename(self.image_path)
             if wcsfile is None:
                 logger.log(
-                    f"Could not find WCS file for {self.image_path}", level="ERROR"
+                    f"Could not find WCS file for {self.image_path}",
+                    level="ERROR",
                 )
-                raise Exception(f"Could not find WCS file for {self.image_path}")
+                raise Exception(
+                    f"Could not find WCS file for {self.image_path}"
+                )
             else:
                 return wcsfile
         else:
@@ -123,7 +131,8 @@ class ImageHeader:
 
             elif os.path.exists(os.path.join(self.dirname, wcs_basename)):
                 logger.log(
-                    f"Found WCS file in image directory (not on {wcs_dirname})", "INFO"
+                    f"Found WCS file in image directory (not on {wcs_dirname})",
+                    "INFO",
                 )
                 return os.path.join(self.dirname, wcs_basename + ".wcs")
             else:
@@ -229,7 +238,11 @@ class ImageHeader:
     def write_avm(self, path=".", force_180=False):
         image_name = os.path.basename(self.image_path)
         au.write_avm(
-            image_name, self.header, suffix="_avm", path_out=path, force_180=force_180
+            image_name,
+            self.header,
+            suffix="_avm",
+            path_out=path,
+            force_180=force_180,
         )
 
     def write_fits(self, path=".", name=None):
@@ -251,7 +264,9 @@ class ImageHeader:
         header_path = os.path.join(self.dirname, name)
         # output header as fits files
         header = wh.fixup_header(self.header)
-        header.tofile(header_path, sep="", endcard=True, padding=True, overwrite=True)
+        header.tofile(
+            header_path, sep="", endcard=True, padding=True, overwrite=True
+        )
 
 
 class ImageSet:

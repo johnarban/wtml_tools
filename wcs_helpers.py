@@ -152,7 +152,12 @@ def add_cd_matrix(header):
     """
     cd_matrix = get_cd(header=header)
     # check if keys starting with CD exist
-    matrix_keys = {"CD1_1": (0, 0), "CD1_2": (0, 1), "CD2_1": (1, 0), "CD2_2": (1, 1)}
+    matrix_keys = {
+        "CD1_1": (0, 0),
+        "CD1_2": (0, 1),
+        "CD2_1": (1, 0),
+        "CD2_2": (1, 1),
+    }
     if any([key in header for key in matrix_keys]):
         return header
 
@@ -171,7 +176,12 @@ def replace_cd_matrix(header, cd_matrix):
     replace cd matrix in header with cd_matrix
     """
     # check if keys starting with CD exist
-    matrix_keys = {"CD1_1": (0, 0), "CD1_2": (0, 1), "CD2_1": (1, 0), "CD2_2": (1, 1)}
+    matrix_keys = {
+        "CD1_1": (0, 0),
+        "CD1_2": (0, 1),
+        "CD2_1": (1, 0),
+        "CD2_2": (1, 1),
+    }
     for key, value in matrix_keys.items():
         header[key] = cd_matrix[value]
 
@@ -183,7 +193,12 @@ def replace_pc_matrix(header, pc_matrix):
     replace pc matrix in header with pc_matrix
     """
     # check if keys starting with CD exist
-    matrix_keys = {"PC1_1": (0, 0), "PC1_2": (0, 1), "PC2_1": (1, 0), "PC2_2": (1, 1)}
+    matrix_keys = {
+        "PC1_1": (0, 0),
+        "PC1_2": (0, 1),
+        "PC2_1": (1, 0),
+        "PC2_2": (1, 1),
+    }
     for key, value in matrix_keys.items():
         header[key] = pc_matrix[value]
 
@@ -288,7 +303,8 @@ def modify_header(
                 header = center_header(header)
         else:
             logger.log(
-                "Can't center image if nor naxis keywords are present", level="ERROR"
+                "Can't center image if nor naxis keywords are present",
+                level="ERROR",
             )
 
     if nudge["x"] != 0 or nudge["y"] != 0:
@@ -359,7 +375,9 @@ def flip_parity(header, height=None, inplace=False):
     new_pixel_scale_matrix = get_cd(header)
 
     # pretty print the matrices showing the change
-    logger.log(f"Original CD matrix: cd_sign = {original_cd_sign}", level="INFO")
+    logger.log(
+        f"Original CD matrix: cd_sign = {original_cd_sign}", level="INFO"
+    )
     logger.log(pretty_print_matrix(original_pixel_scale_matrix), level="DEBUG")
     logger.log(f"New CD matrix: cd_sign = {new_cd_sign}", level="INFO")
     logger.log(pretty_print_matrix(new_pixel_scale_matrix), level="DEBUG")
@@ -401,7 +419,9 @@ def flip_parity2(header, width=None, inplace=False):
     new_pixel_scale_matrix = get_cd(header)
 
     # pretty print the matrices showing the change
-    logger.log(f"Original CD matrix: cd_sign = {original_cd_sign}", level="INFO")
+    logger.log(
+        f"Original CD matrix: cd_sign = {original_cd_sign}", level="INFO"
+    )
     logger.log(pretty_print_matrix(original_pixel_scale_matrix), level="DEBUG")
     logger.log(f"New CD matrix: cd_sign = {new_cd_sign}", level="INFO")
     logger.log(pretty_print_matrix(new_pixel_scale_matrix), level="DEBUG")
@@ -459,13 +479,16 @@ def get_rot_from_cd(cd, wwt=False):
     T = cd_sign * cd[0, 0] + cd[1, 1]
     A = cd_sign * cd[1, 0] - cd[0, 1]
     rot_astrom = -atan2(-cd_sign * A, -T) * 180 / pi
-    logger.log(f"\tRot (Astrometry.net) = {rot_astrom:0.3f} degrees", level="DEBUG")
+    logger.log(
+        f"\tRot (Astrometry.net) = {rot_astrom:0.3f} degrees", level="DEBUG"
+    )
     if wwt:
         logger.log(f"\tUsing WWT method. Angle :{rot_wwt:0.3f}", level="DEBUG")
         return rot_wwt
     else:
         logger.log(
-            f"\tUsing Astrometry.net method. Angle :{rot_astrom:0.3f}", level="DEBUG"
+            f"\tUsing Astrometry.net method. Angle :{rot_astrom:0.3f}",
+            level="DEBUG",
         )
         return rot_astrom
 
@@ -488,7 +511,8 @@ def get_scale_rot(header, wwt=False):
 
     logger.log("get_scale_rot::", level="DEBUG")
     logger.log(
-        f"\tscale: {scales}\n\trot: {rot:.3f}\n\tparity: {parity}", level="DEBUG"
+        f"\tscale: {scales}\n\trot: {rot:.3f}\n\tparity: {parity}",
+        level="DEBUG",
     )
 
     return scales, rot, parity
@@ -506,18 +530,23 @@ def clean_header(header, inplace=False, verbose=False):
 
 def rotation_matrix(angle, radians=False):
     angle = np.radians(angle) if not radians else angle
-    return np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
+    return np.array(
+        [[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]]
+    )
 
 
 def rotate_cd_matrix(header, angle=90, ccw=True, swap=True):
     if "CD1_1" not in header:
         if "PC1_1" in header:
             logger.log(
-                "CD matrix not present. Attempting to rotate PC matrix", level="INFO"
+                "CD matrix not present. Attempting to rotate PC matrix",
+                level="INFO",
             )
             header = rotate_pc_matrix(header, angle=angle, ccw=ccw)
         else:
-            logger.log("Cannot rotate CD matrix without CD or PC matrix", "ERROR")
+            logger.log(
+                "Cannot rotate CD matrix without CD or PC matrix", "ERROR"
+            )
             return header
     # rotate CD matrix by 90 degrees (counter-clock-wise)
     logger.log(f"Rotating CD Matrix by {angle} degrees", level="INFO")
@@ -549,11 +578,14 @@ def rotate_pc_matrix(header, angle=90, ccw=True, swap=True):
     if "PC1_1" not in header:
         if "CD1_1" in header:
             logger.log(
-                "PC matrix not present. Attempting to rotate CD matrix", level="INFO"
+                "PC matrix not present. Attempting to rotate CD matrix",
+                level="INFO",
             )
             header = rotate_cd_matrix(header, angle=angle, ccw=ccw)
         else:
-            logger.log("Cannot rotate PC matrix without CD or PC matrix", "ERROR")
+            logger.log(
+                "Cannot rotate PC matrix without CD or PC matrix", "ERROR"
+            )
             return header
 
     logger.log(f"Rotating PC Matrix by {angle} degrees", level="INFO")

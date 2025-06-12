@@ -118,16 +118,22 @@ def format_wwt_url(
     logger.log(f"\tRotation: {url_rot}", level="STATS")
     template = "reverseparity=%s&scale=%.6f&name=%s&imageurl=%s&ra=%.6f&dec=%.6f&x=%.1f&y=%.1f&rotation=%.2f&thumb=%s"
     wwt_url = template % options
-    logger.log(f"\nWorldWide Telescope URL:\n\t {base_url + wwt_url}\n", level="INFO")
+    logger.log(
+        f"\nWorldWide Telescope URL:\n\t {base_url + wwt_url}\n", level="INFO"
+    )
     return base_url + wwt_url
 
 
-def wwt_url_from_header(header, name, url=None, thumb_url="", nudge={"x": 0, "y": 0}):
+def wwt_url_from_header(
+    header, name, url=None, thumb_url="", nudge={"x": 0, "y": 0}
+):
     if url is None:
         raise (ValueError("No URL provided"))
     wtml_params = header_to_wtml_params(header, for_url=True, nudge=nudge)
     reverse_parity = wtml_params["parity"] > 0
-    return format_wwt_url(name, **wtml_params, reverse_parity=reverse_parity, url=url)
+    return format_wwt_url(
+        name, **wtml_params, reverse_parity=reverse_parity, url=url
+    )
 
 
 def create_imageset_dict(

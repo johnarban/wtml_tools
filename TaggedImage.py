@@ -69,7 +69,9 @@ class TaggedImage:
         self._get_image_header()
 
         if self.avm is None:
-            logger.log("No AVM deteected. Creating AVM from self.header", level="INFO")
+            logger.log(
+                "No AVM deteected. Creating AVM from self.header", level="INFO"
+            )
             self.avm = AVM.from_header(self.header)
 
     def _get_image_header(self):
