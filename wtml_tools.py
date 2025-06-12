@@ -240,10 +240,14 @@ def create_wtml(
 
     el_credits_url = ET.Element("CreditsUrl")
     el_credits_url.text = credits_url
-
-    el_description = ET.Element("Description")
-    # interpret description as raw html
-    el_description.text = ET.CDATA(description)
+    
+    try:
+        el_description = ET.Element("Description")
+        # interpret description as raw html
+        el_description.text = ET.CDATA(description)
+    except:
+        el_description = ET.Element("Description")
+        el_description.text = description
 
     el_thumbnail_url = ET.Element("ThumbnailUrl")
     el_thumbnail_url.text = (

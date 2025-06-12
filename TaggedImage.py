@@ -86,6 +86,6 @@ class TaggedImage:
     
     
     def _get_wtml(self):
-        
+        pass
         
     
