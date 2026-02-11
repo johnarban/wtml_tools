@@ -253,9 +253,15 @@ def create_wtml(
     if out is None:
         out = name + ".wtml"
     logger.log(f"WTML file: {out}", level="INFO")
-
-    im = ih.get_PIL_image(image_path)
-    width, height = im.size
+    
+    # Get image size from header
+    width = header.get("NAXIS1", header.get("IMAGEW", None))
+    height = header.get("NAXIS2", header.get("IMAGEH", None))
+    if width is None or height is None:
+        # if the header does not have NAXIS1 or NAXIS2, try to get the image size from the image file
+        logger.log("No NAXIS1 or NAXIS2 in header, getting image size from image file", level="DEBUG")
+        im = ih.get_PIL_image(image_path)
+        width, height = im.size
     if url is None:
         raise ValueError("I need a url")
 
@@ -400,15 +406,58 @@ def add_description_credits_to_wtml(
     # replace the &lt; and &gt; with < and >
     xml.replace_lt_gt(wtml_file)
 
-    # repla
+
+def validate_inputs(image_path, wcsfile, name):
+    if not os.path.exists(image_path):
+        raise FileNotFoundError(f"Image file not found: {image_path}")
+    if wcsfile and not os.path.exists(wcsfile):
+        raise FileNotFoundError(f"WCS file not found: {wcsfile}")
+    if not name:
+        name = os.path.splitext(os.path.basename(image_path))[0]
+    return name
 
 
-# what do we want to specify when creatng a wtml file?
-# name: Place and ImageSet name
-# wtml: Name of wtml file
-# image_url: where wtml file can find the image
-# thumb_url: where wtml file can find the image thumbnail
-# outdir: where to save the wtml file
+def prepare_image_header(image_path, wcsfile, use_avm, rotate_cd_matrix_by, force_image_center, force_bottoms_up, mods, image_size):
+    image_header = hc.ImageHeader(
+        image_path,
+        wcsfile=wcsfile,
+        image_size=image_size,
+        use_avm=use_avm,
+        rotate_cd_matrix=rotate_cd_matrix_by,
+        force_image_center=force_image_center,
+    )
+    if force_bottoms_up:
+        image_header.header = wh.flip_parity(image_header.header)
+    if mods:
+        image_header.header = wh.modify_header(image_header.header, **mods)
+    return image_header
+
+
+def generate_urls_and_paths(image_path, wtml, output_dir, suffix, image_url, thumb_url, to_github):
+    ext = os.path.splitext(image_path)[1][1:]
+    suffix = ih.get_suffix(suffix)
+    if not wtml:
+        wtml = os.path.basename(image_path).replace(f".{ext}", f"{suffix}.wtml")
+    if not output_dir:
+        output_dir = os.path.dirname(image_path)
+    if not image_url:
+        image_url = image_path.replace(f".{ext}", f"{suffix}.{ext}")
+    if to_github:
+        image_url = ph.to_github(os.path.basename(image_url), web=True)
+    if not thumb_url:
+        thumb_url = image_url
+    return wtml, output_dir, image_url, thumb_url
+
+
+def write_auxiliary_files(image_header, output_dir, write_avm, write_header, to_fits):
+    if write_avm:
+        image_header.write_avm(output_dir, force_180=False)
+    if write_header:
+        image_header.write_header(name="header.hdr")
+    if to_fits:
+        image_header.write_fits(output_dir, name="image.fits")
+
+
 def create_wtml_from_image(
     image_path,
     wcsfile=None,
@@ -430,94 +479,33 @@ def create_wtml_from_image(
     force_bottoms_up=False,
     to_fits=False,
     mods=None,
+    image_size=None,
     place_center={},
     description="description",
     credits="credits",
     credits_url="credits_url",
 ):
-    """
-    Create a WTML file from an image file.
-    image_path: path to image file
-    wcsfile: path to wcs file. If not provided it will look for a .wcs file with the same name as the image file
-    use_avm: if True, it will try to get the wcs from the AVM tags in the image file
-    wtml: name of the wtml file. If not provided it will use the name of the image file
-    output_dir: directory where the wtml file will be saved. If not provided it will use the directory of the image file
-    name: name of the Place and ImageSet. If not provided it will use the name of the image file
-    image_url: url where the wtml file can find the image. If not provided it will use the name of the image file
-    thumb_url: url where the wtml file can find the image thumbnail. If not provided it will use the name of the image_url
-    suffix: suffix to add to the name of the wtml file (and other outputs)
-    foce_avm_180: if True, it will force the AVM rotatiion to be angle - 180 degrees.
-    """
     logger.log(f"image_path: {image_path}", level="INFO")
-    # Get the image
-    ext = os.path.splitext(image_path)[1][1:]
-    suffix = ih.get_suffix(suffix)
 
-    if name is None:
-        name = os.path.splitext(os.path.basename(image_path))[0]
+    # Step 1: Validate inputs
+    name = validate_inputs(image_path, wcsfile, name)
 
-    if wcsfile is None:
-        logger.log(f"wcsfile not provided.", level="INFO")
-    else:
-        logger.log(f"wcsfile: {wcsfile}", level="INFO")
-    image_header = hc.ImageHeader(
-        image_path,
-        wcsfile=wcsfile,
-        use_avm=use_avm,
-        rotate_cd_matrix=rotate_cd_matrix_by,
-        force_image_center=force_image_center,
+    # Step 2: Prepare image header
+    image_header = prepare_image_header(
+        image_path, wcsfile, use_avm, rotate_cd_matrix_by, force_image_center, force_bottoms_up, mods, image_size
     )
-    if force_bottoms_up:
-        image_header.header = wh.flip_parity(image_header.header)
 
-    if mods is not None:
-        image_header.header = wh.modify_header(image_header.header, **mods)
+    # Step 3: Generate URLs and paths
+    wtml, output_dir, image_url, thumb_url = generate_urls_and_paths(
+        image_path, wtml, output_dir, suffix, image_url, thumb_url, to_github
+    )
 
-    header = image_header.header
+    # Step 4: Write auxiliary files
+    write_auxiliary_files(image_header, output_dir, write_avm, write_header, to_fits)
 
-    # wtml: name of the wtml file
-    # wtml_dir: directory where the wtml file will be saved
-    if wtml is None:
-        wtml = os.path.basename(image_path).replace(f".{ext}", f"{suffix}.wtml")
-        wtml_dir = os.path.dirname(image_path)
-    else:
-        wtml_dir = os.path.dirname(wtml)
-        wtml = os.path.basename(wtml)
-
-    if output_dir is None:
-        if wtml_dir == "":
-            output_dir = os.path.dirname(image_path)
-        else:
-            output_dir = wtml_dir
-
-    logger.log(f"output_dir: {os.path.join(output_dir, wtml)}", level="INFO")
-
-    if image_url is None:
-        image_url = image_path.replace(f".{ext}", f"{suffix}.{ext}")
-
-    logger.log(f"WTML Image URL: {image_url}", level="INFO")
-
-    if to_github:
-        image_url = ph.to_github(os.path.basename(image_url), web=True)
-
-    if thumb_url is None:
-        thumb_url = image_url
-
-    if write_avm:
-        logger.log(f"Writing AVM to {image_path}", level="INFO")
-        image_header.write_avm(output_dir, force_180=False)
-
-    # save the header
-    if write_header:
-        logger.log(f"Writing header to {image_path}", level="INFO")
-        image_header.write_header(name="header.hdr")
-
-    if to_fits:
-        logger.log(f"Writing FITS to {image_path}", level="INFO")
-        image_header.write_fits(output_dir, name="image.fits")
-
+    # Step 5: Create WTML file
     tree, imageset, out = create_wtml(
-        header,
+        image_header.header,
         image_path,
         name=name,
         out=os.path.join(output_dir, wtml),

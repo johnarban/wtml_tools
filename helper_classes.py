@@ -33,15 +33,16 @@ IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png"]
 
 
 class ImageHeader:
-
     def __init__(
         self,
         image_path,
         wcsfile=None,
+        image_size=None,
         use_avm=False,
         rotate_cd_matrix=0,
         force_image_center=False,
     ):
+        # Initialize attributes
         self.image_path = image_path
         self.basename = os.path.basename(image_path)
         self.dirname = os.path.dirname(image_path)
@@ -52,9 +53,12 @@ class ImageHeader:
         self.description = ""
         self.name = ""
         self.rotate_cd_matrix_by = rotate_cd_matrix
+        self.image_size = image_size  # Prioritize this value
 
         self.use_avm = use_avm
         self.avm = self.get_avm(image_path)
+
+        # Step 1: Use AVM metadata if applicable
         if use_avm and (self.avm is not None):
             self.header = self.header_from_avm(self.avm)
             if self.rotate_cd_matrix_by != 0:
@@ -65,6 +69,7 @@ class ImageHeader:
         else:
             use_avm = False
 
+            # Step 2: Use WCS file if provided
             if isinstance(self.wcsfile, Header):
                 self.header = self.wcsfile
             else:
@@ -74,6 +79,7 @@ class ImageHeader:
                     if not self.use_avm:
                         self.header = self.wcs_header
 
+        # Step 3: Create a blank header if none exists
         if self.header is None:
             logger.log(
                 f"Could not find header for {self.image_path}", level="ERROR"
@@ -81,9 +87,19 @@ class ImageHeader:
             logger.log("Creating blank header", level="ERROR")
             self.header = wh.blank_header()
 
+        # Step 4: Override header dimensions with image_size if provided
+        if self.image_size:
+            width, height = self.image_size
+            self.header["NAXIS1"] = width
+            self.header["NAXIS2"] = height
+            self.header["IMAGEW"] = width
+            self.header["IMAGEH"] = height
+
+        # Step 5: Clean and normalize the header
         self.clean_header()
         self.normalize_header()
 
+        # Step 6: Force CRPIX to center if requested
         if force_image_center:
             self.crpix_to_center()
 
@@ -152,22 +168,27 @@ class ImageHeader:
         self.header = wh.remove_sip(self.header)
 
     def normalize_header(self):
+        """
+        Normalize the header to ensure consistency in dimensions and required keywords.
+        """
         header = self.header.copy()
         header = wh.add_cd_matrix(header)
 
+        # Ensure NAXIS1, NAXIS2, IMAGEW, and IMAGEH are consistent
         par = self._get_naxis_params()
         header = wh.add_NAXES(header, **par)
 
-        # add keywords required for FITS validation
+        # Add required FITS keywords
         header = wh.add_required_keywords(header)
-
-        # header = wh.fixup_header(header)
 
         self.header = header
 
     def crpix_to_center(self):
+        """
+        Move CRPIX to the center of the image based on the dimensions.
+        """
         logger.log("Moving CRPIX to center", level="INFO")
-        width, height = ih.get_image_size(self.image_path)
+        width, height = self._get_naxis_params().values()
         header = self.header.copy()
         header["CRPIX1"] = (width + 1) / 2
         header["CRPIX2"] = (height + 1) / 2
@@ -188,11 +209,15 @@ class ImageHeader:
             self.header = wh.flip_parity(header, par["height"])
 
     def _get_naxis_params(self):
-        if self.image_path is not None:
+        """
+        Get the image dimensions (width and height) from image_size, header, or file.
+        """
+        if self.image_size is not None:
+            width, height = self.image_size
+        elif self.header is not None and "IMAGEH" in self.header:
+            width, height = self.header["IMAGEW"], self.header["IMAGEH"]
+        else:
             width, height = ih.get_image_size(self.image_path)
-        elif (self.header is not None) and ("IMAGEH" in self.header):
-            width, height = (self.header["IMAGEW"], self.header["IMAGEH"])
-
         return {"width": width, "height": height}
 
     def add_naxis_params(self):
@@ -211,13 +236,6 @@ class ImageHeader:
         if not hasattr(avm, "Spatial"):
             return None
 
-        # if ('FITSheader' in avm.Spatial._items) and (avm.Spatial.FITSheader is not None):
-        #     logger.log('Using FITS header from AVM', level = 'INFO')
-        #     fitsHeader = avm.Spatial.FITSheader
-        #     if fitsHeader is not None:
-        #         header = Header.fromstring(fitsHeader)
-        #         header = wh.transpose_header(header)
-        # else:
         header = avm.to_wcs().to_header()
 
         header["IMAGEW"] = par["width"]
@@ -392,9 +410,3 @@ class ImageSet:
 
     def set_bottoms_up(self, bottoms_up):
         self.BottomsUp = bottoms_up
-
-    # def write_avm(self,path):
-    #     image_name = os.path.basename(path)
-    #     # rename image with _avm at the end
-    #     image_name = os.path.splitext(image_name)[0] + "_avm" + os.path.splitext(image_name)[1]
-    #     au.write_avm(image_name, self.header, suffix = "_avm", path = path)
